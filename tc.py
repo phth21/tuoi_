@@ -340,7 +340,7 @@ def log_event(action, detail):
 @app.route('/api/history')
 def get_history():
     date_str = request.args.get('date') # YYYY-MM-DD
-    if not db_collection: return jsonify([])
+    if db_collection is None: return jsonify([])
     
     # Tìm trong MongoDB theo ngày, ẩn trường _id (vì không convert sang JSON được)
     logs = list(db_collection.find(
@@ -472,3 +472,4 @@ threading.Thread(target=run_mqtt, daemon=True).start()
 # 2. Block này chỉ dành cho khi chạy thử dưới máy local
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+
