@@ -466,6 +466,9 @@ def run_mqtt():
         mqtt_client.loop_forever()
     except: print("Lỗi MQTT")
 
+# 1. Chạy MQTT ngay khi file được load (để Gunicorn cũng chạy được)
+threading.Thread(target=run_mqtt, daemon=True).start()
+
+# 2. Block này chỉ dành cho khi chạy thử dưới máy local
 if __name__ == '__main__':
-    threading.Thread(target=run_mqtt, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
