@@ -1,0 +1,7 @@
+flask
+paho-mqtt
+requests
+google-generativeai
+pymongo
+dnspython
+gunicorn
