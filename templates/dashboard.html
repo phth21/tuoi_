@@ -7,7 +7,6 @@
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
-  /* --- GIỮ NGUYÊN CSS CŨ --- */
   :root { --bg: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
   body { margin:0; font-family: 'Nunito', sans-serif; background: var(--bg); min-height: 100vh; display: flex; justify-content: center; align-items: center; color: #2d3436; padding: 10px; }
   .screen { position: fixed; top:0; left:0; width:100%; height:100%; z-index: 99; display:flex; flex-direction:column; justify-content:center; align-items:center; background: rgba(255,255,255,0.99); transition: 0.3s; }
@@ -28,7 +27,7 @@
   .mode-card:hover { border-color: #00b894; transform: translateY(-5px); }
   #panelAuto, #panelManual { display: none; animation: fadeIn 0.5s; }
   .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .p-btn { padding: 30px; border:none; border-radius:15px; font-weight:bold; color:white; font-size:1.3rem; cursor:pointer; width: 100%; }
+  .p-btn { padding: 30px; border:none; border-radius:15px; font-weight:bold; color:white; font-size:1.3rem; cursor:pointer; width: 100%; transition: 0.3s; }
   .bon { background: #00b894; } .boff { background: #636e72; }
   #cityPopup, #historyPopup { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999; justify-content:center; align-items:center; }
   .popup-box { background:white; padding:25px; border-radius:20px; width:300px; text-align:center; max-height:80vh; overflow-y:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
@@ -48,6 +47,10 @@
   .summary-box { background: #e3f2fd; color: #0984e3; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; display: none; }
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
   .emergency { animation: blink 1s infinite; border-color: red !important; } @keyframes blink { 50% { opacity: 0.5; } }
+  
+  /* Style cho nút bị disable (Dành cho Viewer) */
+  .btn-disabled { opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(100%); }
+
   @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .mode-container { flex-direction:column; } }
 </style>
 </head>
@@ -85,8 +88,8 @@
     <a href="/logout" class="logout-btn">Đăng xuất</a>
     
     {% if role == 'VIEWER' %}
-        <div style="text-align:center; font-size:0.8rem; color:#d63031; margin-bottom:10px; font-weight:bold;">
-           (Chế độ Khách: Bạn đang xem màn hình giống Admin nhưng bị khóa nút bấm)
+        <div style="text-align:center; font-size:0.8rem; color:#d63031; margin-bottom:10px; font-weight:bold; background:#ffebeb; padding:5px; border-radius:8px;">
+           👁️ Chế độ Khách: Bạn chỉ có quyền Xem
         </div>
     {% endif %}
 
@@ -120,18 +123,17 @@
         </div>
 
         <div id="panelManual">
-    <div id="panelManual">
            <div class="manual-grid">
               <button id="btnOn" class="p-btn bon" onclick="pump(true)">BẬT BƠM</button>
               <button id="btnOff" class="p-btn boff" onclick="pump(false)">TẮT BƠM</button>
            </div>
+           {% if role == 'VIEWER' %}
+               <p style="text-align:center; color:#999; margin-top:15px; font-style:italic">
+                   (Nút bấm bị vô hiệu hóa do bạn là Khách)
+               </p>
+           {% endif %}
         </div>
-    {% if role == 'VIEWER' %}
-       <p style="text-align:center; color:#999; margin-top:10px; font-style:italic">
-           (Bạn đang ở chế độ Xem, quyền điều khiển thuộc về Admin)
-       </p>
-    {% endif %}
-</div>
+        
       </div>
     </div>
   </div>
@@ -179,7 +181,7 @@
   const PREFIX = "thaocute_smartgarden/";
   const client = mqtt.connect(BROKER_URL);
   
-  // Lấy vai trò từ Server truyền sang
+  // Lấy vai trò từ Server (Backend Template Render)
   const USER_ROLE = "{{ role }}"; 
 
   const REGIONAL_CITIES = {
@@ -207,69 +209,56 @@
       document.getElementById('soil').innerText = d.soil;
       document.getElementById('warn').innerText = d.warning;
 
-      document.getElementById('panelAuto').style.display = (d.mode === 'AUTO') ? 'block' : 'none';
-      document.getElementById('panelManual').style.display = (d.mode === 'MANUAL') ? 'block' : 'none';
+      // Xử lý hiển thị Panel
+      const pAuto = document.getElementById('panelAuto');
+      const pManual = document.getElementById('panelManual');
 
-      // --- BẮT ĐẦU ĐOẠN CODE MỚI THÊM ---
-      // Xử lý hiển thị nút bấm khi ở chế độ MANUAL
-      if (d.mode === 'MANUAL') {
+      if (d.mode === 'AUTO') {
+          pAuto.style.display = 'block';
+          pManual.style.display = 'none';
+          document.getElementById('aiTime').innerText = d.ai_timing;
+          document.getElementById('aiReason').innerText = d.ai_reason;
+      } 
+      else if (d.mode === 'MANUAL') {
+          pAuto.style.display = 'none';
+          pManual.style.display = 'block';
+          
+          // --- LOGIC PHÂN QUYỀN NÚT BẤM ---
           const btnOn = document.getElementById('btnOn');
           const btnOff = document.getElementById('btnOff');
           
-          if (btnOn && btnOff) { 
-              if (USER_ROLE === 'VIEWER') {
-                  // KHÁCH: 
-                  btnOn.disabled = true;  // Khóa cứng nút (quan trọng)
-                  btnOff.disabled = true; // Khóa cứng nút
-                  
-                  // Chỉnh giao diện cho đẹp
-                  btnOn.style.opacity = "0.5";
-                  btnOn.style.cursor = "not-allowed";
-                  btnOn.title = "Khách chỉ được xem"; 
-                  
-                  btnOff.style.opacity = "0.5";
-                  btnOff.style.cursor = "not-allowed";
-                  btnOff.title = "Khách chỉ được xem";
-              } else {
-                  // ADMIN:
-                  btnOn.disabled = false; // Mở khóa nút
-                  btnOff.disabled = false; // Mở khóa nút
-
-                  btnOn.style.opacity = "1";
-                  btnOn.style.cursor = "pointer";
-                  btnOn.title = "";
-                  
-                  btnOff.style.opacity = "1";
-                  btnOff.style.cursor = "pointer";
-                  btnOff.title = "";
-              }
+          if (USER_ROLE === 'VIEWER') {
+              // Nếu là Khách: Khóa nút, thêm class xám màu
+              btnOn.disabled = true;
+              btnOff.disabled = true;
+              btnOn.classList.add('btn-disabled');
+              btnOff.classList.add('btn-disabled');
+          } else {
+              // Nếu là Admin/User: Mở nút
+              btnOn.disabled = false;
+              btnOff.disabled = false;
+              btnOn.classList.remove('btn-disabled');
+              btnOff.classList.remove('btn-disabled');
           }
-      } 
-      // ------------------------------------
-
-      if(d.mode === 'AUTO') {
-         document.getElementById('aiTime').innerText = d.ai_timing;
-         document.getElementById('aiReason').innerText = d.ai_reason;
       }
       
+      // Hiển thị trạng thái khẩn cấp (đất khô)
       const box = document.getElementById('soilBox');
       if(d.soil < 26) { box.classList.add('emergency'); box.style.borderColor='red'; }
       else { box.classList.remove('emergency'); box.style.borderColor='#dfe6e9'; }
       
+      // Hiển thị trạng thái bơm
       const pst = document.getElementById('pumpSt');
       if(d.pump) { pst.innerText = "ĐANG BƠM..."; pst.style.color="#00b894"; }
       else { pst.innerText = "MÁY BƠM TẮT"; pst.style.color="#636e72"; }
   }
 
-  // --- HÀM GỬI LỆNH (Đây là chốt chặn quan trọng) ---
   function emit(ev, d) { 
-      // QUAN TRỌNG: Chỉ chặn hành động điều khiển bơm của Khách
+      // Chốt chặn cuối cùng: Nếu là Viewer mà cố tình gọi lệnh bơm thì chặn lại
       if(USER_ROLE === 'VIEWER' && ev === 'user_control') {
-          alert("🚫 CHẾ ĐỘ KHÁCH\n\nBạn chỉ được xem, không được Bật/Tắt bơm!");
+          alert("🚫 BẠN ĐANG Ở CHẾ ĐỘ KHÁCH\n\nBạn không có quyền Bật/Tắt máy bơm.");
           return; 
       }
-      
-      // Lệnh thoát (exit_dashboard) hay chọn vùng sẽ đi qua đây bình thường
       client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: d})); 
   }
 
@@ -307,7 +296,7 @@
         .then(response => response.json())
         .then(data => {
             rawHistoryData = data || []; 
-            filterAndRender();           
+            filterAndRender();            
         })
         .catch(err => {
             console.error(err);
@@ -359,6 +348,3 @@
 </script>
 </body>
 </html>
-
-
-
