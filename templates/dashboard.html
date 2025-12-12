@@ -120,10 +120,12 @@
         </div>
 
         <div id="panelManual">
-    <div class="manual-grid">
-       <button id="btnOn" class="p-btn bon" onclick="pump(true)">BẬT BƠM</button>
-       <button id="btnOff" class="p-btn boff" onclick="pump(false)">TẮT BƠM</button>
-    </div>
+    <div id="panelManual">
+           <div class="manual-grid">
+              <button id="btnOn" class="p-btn bon" onclick="pump(true)">BẬT BƠM</button>
+              <button id="btnOff" class="p-btn boff" onclick="pump(false)">TẮT BƠM</button>
+           </div>
+        </div>
     {% if role == 'VIEWER' %}
        <p style="text-align:center; color:#999; margin-top:10px; font-style:italic">
            (Bạn đang ở chế độ Xem, quyền điều khiển thuộc về Admin)
@@ -208,29 +210,41 @@
       document.getElementById('panelAuto').style.display = (d.mode === 'AUTO') ? 'block' : 'none';
       document.getElementById('panelManual').style.display = (d.mode === 'MANUAL') ? 'block' : 'none';
 
-      // --- ĐOẠN LOGIC MỚI THÊM VÀO ĐÂY ---
+      // --- BẮT ĐẦU ĐOẠN CODE MỚI THÊM ---
+      // Xử lý hiển thị nút bấm khi ở chế độ MANUAL
       if (d.mode === 'MANUAL') {
           const btnOn = document.getElementById('btnOn');
           const btnOff = document.getElementById('btnOff');
           
-          if (USER_ROLE === 'VIEWER') {
-              // Nếu là Khách: Làm mờ nút và không cho bấm
-              btnOn.disabled = true;
-              btnOff.disabled = true;
-              btnOn.style.opacity = "0.5";
-              btnOff.style.opacity = "0.5";
-              btnOn.style.cursor = "not-allowed";
-              btnOff.style.cursor = "not-allowed";
-          } else {
-              // Nếu là Admin: Cho phép bấm bình thường
-              btnOn.disabled = false;
-              btnOff.disabled = false;
-              btnOn.style.opacity = "1";
-              btnOff.style.opacity = "1";
-              btnOn.style.cursor = "pointer";
-              btnOff.style.cursor = "pointer";
+          if (btnOn && btnOff) { 
+              if (USER_ROLE === 'VIEWER') {
+                  // KHÁCH: 
+                  btnOn.disabled = true;  // Khóa cứng nút (quan trọng)
+                  btnOff.disabled = true; // Khóa cứng nút
+                  
+                  // Chỉnh giao diện cho đẹp
+                  btnOn.style.opacity = "0.5";
+                  btnOn.style.cursor = "not-allowed";
+                  btnOn.title = "Khách chỉ được xem"; 
+                  
+                  btnOff.style.opacity = "0.5";
+                  btnOff.style.cursor = "not-allowed";
+                  btnOff.title = "Khách chỉ được xem";
+              } else {
+                  // ADMIN:
+                  btnOn.disabled = false; // Mở khóa nút
+                  btnOff.disabled = false; // Mở khóa nút
+
+                  btnOn.style.opacity = "1";
+                  btnOn.style.cursor = "pointer";
+                  btnOn.title = "";
+                  
+                  btnOff.style.opacity = "1";
+                  btnOff.style.cursor = "pointer";
+                  btnOff.title = "";
+              }
           }
-      }
+      } 
       // ------------------------------------
 
       if(d.mode === 'AUTO') {
@@ -249,12 +263,13 @@
 
   // --- HÀM GỬI LỆNH (Đây là chốt chặn quan trọng) ---
   function emit(ev, d) { 
-      // NẾU LÀ KHÁCH -> CHẶN LẠI VÀ BÁO LỖI
-      if(USER_ROLE === 'VIEWER') {
-          alert("🚫 CHẾ ĐỘ KHÁCH\n\nBạn chỉ được xem thôi, không được bấm nút này!\nChờ Admin điều khiển nhé.");
+      // Chỉ chặn đúng hành động điều khiển bơm (user_control)
+      if(USER_ROLE === 'VIEWER' && ev === 'user_control') {
+          alert("🚫 CHẾ ĐỘ KHÁCH\n\nBạn không được phép Bật/Tắt bơm!");
           return; 
       }
-      // NẾU LÀ ADMIN -> CHO ĐI TIẾP
+      
+      // Các hành động khác (chọn vùng, chọn chế độ Auto/Manual...) THẢ GA
       client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: d})); 
   }
 
@@ -346,4 +361,5 @@
 </script>
 </body>
 </html>
+
 
