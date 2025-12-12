@@ -212,39 +212,45 @@
   client.on('message', (topic, msg) => { if (topic === PREFIX + 'update') { updateUI(JSON.parse(msg.toString())); } });
 
   function updateUI(d) {
-      if(USER_ROLE === 'VIEWER') {
-          // Nếu là Viewer, bỏ qua các bước chọn vùng, vào thẳng App
-          if(d.step < 2) return; 
-      }
-
       currentRegion = d.region; 
-      // Chỉ Admin mới thấy màn hình chọn vùng/chế độ
-      if (USER_ROLE === 'ADMIN') {
+      
+      // === LOGIC HIỂN THỊ GIAO DIỆN ===
+      if (USER_ROLE === 'VIEWER') {
+          // KHÁCH: Luôn luôn hiện màn hình chính, ẩn các màn hình chọn lựa
+          document.getElementById('screenRegion').style.display = 'none';
+          document.getElementById('screenMode').style.display = 'none';
+          document.getElementById('mainApp').style.display = 'block'; 
+      } else {
+          // ADMIN: Phải làm theo từng bước (Chọn vùng -> Chọn chế độ -> Vào main)
           document.getElementById('screenRegion').style.display = (d.step === 0) ? 'flex' : 'none';
           document.getElementById('screenMode').style.display   = (d.step === 1) ? 'flex' : 'none';
+          document.getElementById('mainApp').style.display      = (d.step === 2) ? 'block' : 'none';
       }
-      
-      document.getElementById('mainApp').style.display      = (d.step === 2) ? 'block' : 'none';
-      
-      document.getElementById('loc').innerText = d.location;
+
+      // === CẬP NHẬT THÔNG SỐ (Cả Khách và Admin đều thấy như nhau) ===
+      document.getElementById('loc').innerText = d.location || "Đang chờ dữ liệu...";
       document.getElementById('temp').innerText = d.temp + "°";
       document.getElementById('hum').innerText = d.humidity + "%";
       document.getElementById('rain').innerText = d.rain;
       document.getElementById('soil').innerText = d.soil;
       document.getElementById('warn').innerText = d.warning;
 
-      if (d.step === 2) {
-          document.getElementById('panelAuto').style.display = (d.mode === 'AUTO') ? 'block' : 'none';
-          document.getElementById('panelManual').style.display = (d.mode === 'MANUAL') ? 'block' : 'none';
-          if(d.mode === 'AUTO') {
-             document.getElementById('aiTime').innerText = d.ai_timing;
-             document.getElementById('aiReason').innerText = d.ai_reason;
-          }
+      // Cập nhật trạng thái Panel (AI hoặc Thủ công)
+      // Lưu ý: Nếu Admin chưa chọn chế độ, d.mode sẽ là 'NONE', lúc này ẩn cả 2 panel đi cho đỡ rối
+      document.getElementById('panelAuto').style.display = (d.mode === 'AUTO') ? 'block' : 'none';
+      document.getElementById('panelManual').style.display = (d.mode === 'MANUAL') ? 'block' : 'none';
+
+      if(d.mode === 'AUTO') {
+         document.getElementById('aiTime').innerText = d.ai_timing;
+         document.getElementById('aiReason').innerText = d.ai_reason;
       }
+
+      // Cập nhật màu cảnh báo Đất
       const box = document.getElementById('soilBox');
       if(d.soil < 26) { box.classList.add('emergency'); box.style.borderColor='red'; }
       else { box.classList.remove('emergency'); box.style.borderColor='#dfe6e9'; }
       
+      // Cập nhật trạng thái Bơm
       const pst = document.getElementById('pumpSt');
       if(d.pump) { pst.innerText = "ĐANG BƠM..."; pst.style.color="#00b894"; }
       else { pst.innerText = "MÁY BƠM TẮT"; pst.style.color="#636e72"; }
@@ -353,4 +359,5 @@
   }
 </script>
 </body>
+
 </html>
