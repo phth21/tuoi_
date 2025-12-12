@@ -7,19 +7,16 @@
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
+  /* --- GIỮ NGUYÊN CSS CŨ --- */
   :root { --bg: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
   body { margin:0; font-family: 'Nunito', sans-serif; background: var(--bg); min-height: 100vh; display: flex; justify-content: center; align-items: center; color: #2d3436; padding: 10px; }
-  
   .screen { position: fixed; top:0; left:0; width:100%; height:100%; z-index: 99; display:flex; flex-direction:column; justify-content:center; align-items:center; background: rgba(255,255,255,0.99); transition: 0.3s; }
-  
   .btn { padding: 18px 40px; border:none; border-radius:15px; font-weight:bold; cursor:pointer; color:white; margin: 10px; font-size: 1.2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
   .n { background: #6c5ce7; } .c { background: #0984e3; } .s { background: #d63031; }
-
   #mainApp { display: none; width: 100%; max-width: 1000px; }
   .card { background: rgba(255,255,255,0.96); border-radius: 30px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); position: relative; }
   .back-btn { position: absolute; top: 20px; left: 20px; background: #ff7675; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; z-index: 10; }
   .logout-btn { position: absolute; top: 20px; right: 20px; background: #636e72; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.9rem; }
-
   .layout { display: grid; grid-template-columns: 300px 1fr; gap: 40px; margin-top: 40px; }
   .soil-circle { width: 240px; height: 240px; border-radius: 50%; border: 15px solid #dfe6e9; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; background: white; transition: border-color 0.3s; }
   .soil-num { font-size: 4.5rem; font-weight: 900; color: #00b894; line-height: 1; }
@@ -29,18 +26,14 @@
   .mode-container { display: flex; gap: 20px; }
   .mode-card { background:white; padding:40px; border-radius:20px; cursor:pointer; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); width:200px; border:3px solid transparent; }
   .mode-card:hover { border-color: #00b894; transform: translateY(-5px); }
-  
   #panelAuto, #panelManual { display: none; animation: fadeIn 0.5s; }
   .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .p-btn { padding: 30px; border:none; border-radius:15px; font-weight:bold; color:white; font-size:1.3rem; cursor:pointer; width: 100%; }
   .bon { background: #00b894; } .boff { background: #636e72; }
-
-  /* POPUP & HISTORY STYLES */
   #cityPopup, #historyPopup { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999; justify-content:center; align-items:center; }
   .popup-box { background:white; padding:25px; border-radius:20px; width:300px; text-align:center; max-height:80vh; overflow-y:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
   .city-opt { display:block; width:100%; padding:12px; border:1px solid #eee; background:white; margin-bottom:5px; border-radius:8px; cursor:pointer; font-weight:bold; transition: 0.2s; }
   .city-opt:hover { background:#f0f0f0; color:#0984e3; transform: translateX(5px); }
-  
   .hist-btn { display:inline-block; margin-top:10px; background:#2d3436; color:white; padding:10px 20px; border-radius:8px; font-weight:bold; border:none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0, 0.3); transition: 0.2s; }
   .table-container { max-height: 350px; overflow-y: auto; border-radius: 8px; border: 1px solid #eee; margin-top: 10px; }
   .hist-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; text-align: left; }
@@ -50,12 +43,9 @@
   .bg-green { background: #e3f9e5; color: #00b894; border: 1px solid #00b894; }
   .bg-red { background: #ffebeb; color: #d63031; border: 1px solid #d63031; }
   .bg-blue { background: #e3f2fd; color: #0984e3; border: 1px solid #0984e3; }
-  
-  /* Filter Styles */
   .filter-bar { display: flex; gap: 10px; margin-bottom: 10px; }
   .filter-input { padding: 8px; border-radius: 8px; border: 1px solid #ddd; flex: 1; font-weight: bold; }
   .summary-box { background: #e3f2fd; color: #0984e3; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; display: none; }
-
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
   .emergency { animation: blink 1s infinite; border-color: red !important; } @keyframes blink { 50% { opacity: 0.5; } }
   @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .mode-container { flex-direction:column; } }
@@ -65,17 +55,12 @@
 
 <div id="screenRegion" class="screen">
   <h1>🌱 Smart Garden</h1>
-  {% if role == 'ADMIN' %}
-      <p>Xin chào <b>{{ user }}</b>! Chọn khu vực:</p>
-      <div>
-        <button class="btn n" onclick="emit('select_region', {region:'NORTH'})">Miền Bắc</button>
-        <button class="btn c" onclick="emit('select_region', {region:'CENTRAL'})">Miền Trung</button>
-        <button class="btn s" onclick="emit('select_region', {region:'SOUTH'})">Miền Nam</button>
-      </div>
-  {% else %}
-      <p>Xin chào Khách! Vào chế độ xem...</p>
-      <button class="btn c" onclick="enterViewerMode()">Vào Xem Ngay</button>
-  {% endif %}
+  <p>Xin chào <b>{{ user }}</b>! Chọn khu vực:</p>
+  <div>
+    <button class="btn n" onclick="emit('select_region', {region:'NORTH'})">Miền Bắc</button>
+    <button class="btn c" onclick="emit('select_region', {region:'CENTRAL'})">Miền Trung</button>
+    <button class="btn s" onclick="emit('select_region', {region:'SOUTH'})">Miền Nam</button>
+  </div>
 </div>
 
 <div id="screenMode" class="screen" style="display:none">
@@ -100,8 +85,8 @@
     <a href="/logout" class="logout-btn">Đăng xuất</a>
     
     {% if role == 'VIEWER' %}
-        <div style="background:#ffeaa7; color:#d35400; padding:10px; text-align:center; border-radius:8px; margin-top:40px; font-weight:bold;">
-            👁️ CHẾ ĐỘ KHÁCH: Chỉ xem thông số
+        <div style="text-align:center; font-size:0.8rem; color:#d63031; margin-bottom:10px; font-weight:bold;">
+           (Chế độ Khách: Bạn đang xem màn hình giống Admin nhưng bị khóa nút bấm)
         </div>
     {% endif %}
 
@@ -118,9 +103,7 @@
       <div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:15px">
              <h2 style="margin:0" id="loc">...</h2>
-             {% if role == 'ADMIN' %}
              <button onclick="openCityPopup()" style="background:#eee; border:none; padding:8px 15px; border-radius:20px; cursor:pointer;">✎ Đổi chỗ</button>
-             {% endif %}
         </div>
         <div class="stats-grid">
            <div class="stat-box"><span class="stat-val" id="temp">--</span>Nhiệt độ</div>
@@ -137,17 +120,10 @@
         </div>
 
         <div id="panelManual">
-           {% if role == 'ADMIN' %}
-               <div class="manual-grid">
-                  <button class="p-btn bon" onclick="pump(true)">BẬT BƠM</button>
-                  <button class="p-btn boff" onclick="pump(false)">TẮT BƠM</button>
-               </div>
-           {% else %}
-               <div style="background:#f1f2f6; padding:30px; border-radius:15px; text-align:center; color:#636e72;">
-                   <h3>🔒 KHÓA ĐIỀU KHIỂN</h3>
-                   <p>Bạn không có quyền bật tắt máy bơm.</p>
-               </div>
-           {% endif %}
+           <div class="manual-grid">
+              <button class="p-btn bon" onclick="pump(true)">BẬT BƠM</button>
+              <button class="p-btn boff" onclick="pump(false)">TẮT BƠM</button>
+           </div>
         </div>
       </div>
     </div>
@@ -192,12 +168,11 @@
 </div>
 
 <script>
-  // CONFIG MQTT
   const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
   const PREFIX = "thaocute_smartgarden/";
   const client = mqtt.connect(BROKER_URL);
   
-  // LOGIC PHÂN QUYỀN VIEW (Nếu là khách, không cho gửi lệnh điều khiển)
+  // Lấy vai trò từ Server truyền sang
   const USER_ROLE = "{{ role }}"; 
 
   const REGIONAL_CITIES = {
@@ -206,7 +181,7 @@
     'SOUTH': ["TP.HCM", "Cần Thơ", "Vũng Tàu", "Bình Dương", "Cà Mau"]
   };
   let currentRegion = 'NORTH';
-  let rawHistoryData = []; // Lưu dữ liệu gốc để lọc
+  let rawHistoryData = [];
 
   client.on('connect', () => { console.log("MQTT Connected"); client.subscribe(PREFIX + 'update'); });
   client.on('message', (topic, msg) => { if (topic === PREFIX + 'update') { updateUI(JSON.parse(msg.toString())); } });
@@ -214,29 +189,18 @@
   function updateUI(d) {
       currentRegion = d.region; 
       
-      // === LOGIC HIỂN THỊ GIAO DIỆN ===
-      if (USER_ROLE === 'VIEWER') {
-          // KHÁCH: Luôn luôn hiện màn hình chính, ẩn các màn hình chọn lựa
-          document.getElementById('screenRegion').style.display = 'none';
-          document.getElementById('screenMode').style.display = 'none';
-          document.getElementById('mainApp').style.display = 'block'; 
-      } else {
-          // ADMIN: Phải làm theo từng bước (Chọn vùng -> Chọn chế độ -> Vào main)
-          document.getElementById('screenRegion').style.display = (d.step === 0) ? 'flex' : 'none';
-          document.getElementById('screenMode').style.display   = (d.step === 1) ? 'flex' : 'none';
-          document.getElementById('mainApp').style.display      = (d.step === 2) ? 'block' : 'none';
-      }
-
-      // === CẬP NHẬT THÔNG SỐ (Cả Khách và Admin đều thấy như nhau) ===
-      document.getElementById('loc').innerText = d.location || "Đang chờ dữ liệu...";
+      // ADMIN VÀ KHÁCH ĐỀU THẤY GIỐNG HỆT NHAU
+      document.getElementById('screenRegion').style.display = (d.step === 0) ? 'flex' : 'none';
+      document.getElementById('screenMode').style.display   = (d.step === 1) ? 'flex' : 'none';
+      document.getElementById('mainApp').style.display      = (d.step === 2) ? 'block' : 'none';
+      
+      document.getElementById('loc').innerText = d.location || "...";
       document.getElementById('temp').innerText = d.temp + "°";
       document.getElementById('hum').innerText = d.humidity + "%";
       document.getElementById('rain').innerText = d.rain;
       document.getElementById('soil').innerText = d.soil;
       document.getElementById('warn').innerText = d.warning;
 
-      // Cập nhật trạng thái Panel (AI hoặc Thủ công)
-      // Lưu ý: Nếu Admin chưa chọn chế độ, d.mode sẽ là 'NONE', lúc này ẩn cả 2 panel đi cho đỡ rối
       document.getElementById('panelAuto').style.display = (d.mode === 'AUTO') ? 'block' : 'none';
       document.getElementById('panelManual').style.display = (d.mode === 'MANUAL') ? 'block' : 'none';
 
@@ -244,36 +208,39 @@
          document.getElementById('aiTime').innerText = d.ai_timing;
          document.getElementById('aiReason').innerText = d.ai_reason;
       }
-
-      // Cập nhật màu cảnh báo Đất
+      
       const box = document.getElementById('soilBox');
       if(d.soil < 26) { box.classList.add('emergency'); box.style.borderColor='red'; }
       else { box.classList.remove('emergency'); box.style.borderColor='#dfe6e9'; }
       
-      // Cập nhật trạng thái Bơm
       const pst = document.getElementById('pumpSt');
       if(d.pump) { pst.innerText = "ĐANG BƠM..."; pst.style.color="#00b894"; }
       else { pst.innerText = "MÁY BƠM TẮT"; pst.style.color="#636e72"; }
   }
 
-  // --- LOGIC GỬI LỆNH (CHỈ ADMIN MỚI ĐƯỢC GỬI) ---
+  // --- HÀM GỬI LỆNH (Đây là chốt chặn quan trọng) ---
   function emit(ev, d) { 
-      if(USER_ROLE === 'VIEWER') return alert("Bạn là Khách, không thể điều khiển!");
+      // NẾU LÀ KHÁCH -> CHẶN LẠI VÀ BÁO LỖI
+      if(USER_ROLE === 'VIEWER') {
+          alert("🚫 CHẾ ĐỘ KHÁCH\n\nBạn chỉ được xem thôi, không được bấm nút này!\nChờ Admin điều khiển nhé.");
+          return; 
+      }
+      // NẾU LÀ ADMIN -> CHO ĐI TIẾP
       client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: d})); 
   }
+
   function pump(st) { emit('user_control', {pump: st}); }
+  
   function exit() { 
-      if(USER_ROLE === 'VIEWER') { location.reload(); return; }
+      if(USER_ROLE === 'VIEWER') { 
+          alert("Khách không được thoát, phải chờ Admin!"); 
+          return;
+      }
       if(confirm("Thoát? Bơm sẽ TẮT.")) emit('exit_dashboard', {}); 
   }
   
-  function enterViewerMode() {
-       document.getElementById('screenRegion').style.display = 'none';
-       // Giả lập dữ liệu ban đầu để vào màn hình chính ngay
-       updateUI({step: 2, mode: 'VIEWER', location: 'Chế độ khách', temp:'--', humidity:'--', rain:'--', soil:'--', pump: false});
-  }
-
   function openCityPopup() {
+     if(USER_ROLE === 'VIEWER') { alert("Khách không được đổi địa điểm!"); return; }
      const list = document.getElementById('cityList'); list.innerHTML = "";
      (REGIONAL_CITIES[currentRegion] || []).forEach(c => {
          let btn = document.createElement('button'); btn.className = 'city-opt'; btn.innerText = c;
@@ -289,7 +256,6 @@
       loadHistory(); 
   }
 
-  // --- LOGIC LẤY & LỌC LỊCH SỬ ---
   function loadHistory() {
       const date = document.getElementById('dateInput').value; 
       const tbody = document.getElementById('histBody');
@@ -298,8 +264,8 @@
       fetch('/api/history?date=' + date)
         .then(response => response.json())
         .then(data => {
-            rawHistoryData = data || []; // Lưu vào biến toàn cục
-            filterAndRender();           // Gọi hàm lọc hiển thị
+            rawHistoryData = data || []; 
+            filterAndRender();           
         })
         .catch(err => {
             console.error(err);
@@ -308,30 +274,22 @@
   }
 
   function filterAndRender() {
-      const filterType = document.getElementById('actionFilter').value; // ALL, PUMP, AI
+      const filterType = document.getElementById('actionFilter').value; 
       const tbody = document.getElementById('histBody');
       tbody.innerHTML = "";
       
-      let countPump = 0; // Biến đếm số lần tưới
+      let countPump = 0; 
       let filteredData = [];
 
-      // 1. Lọc và Đếm
       rawHistoryData.forEach(item => {
-          // Logic đếm: Nếu hành động chứa chữ ON hoặc BẬT -> Tăng đếm
-          if (item.action.includes("ON") || item.action.includes("BẬT")) {
-              countPump++;
-          }
-
-          // Logic lọc hiển thị
+          if (item.action.includes("ON") || item.action.includes("BẬT")) countPump++;
           let shouldShow = false;
           if (filterType === 'ALL') shouldShow = true;
           else if (filterType === 'PUMP' && (item.action.includes('PUMP') || item.action.includes('BƠM'))) shouldShow = true;
           else if (filterType === 'AI' && item.action.includes('AI')) shouldShow = true;
-
           if (shouldShow) filteredData.push(item);
       });
 
-      // 2. Hiển thị box tổng kết
       const summaryBox = document.getElementById('summaryBox');
       const pumpCountSpan = document.getElementById('pumpCount');
       if (countPump > 0) {
@@ -341,7 +299,6 @@
           summaryBox.style.display = 'none';
       }
 
-      // 3. Render ra bảng
       if (filteredData.length === 0) {
           tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px">📭 Không có dữ liệu phù hợp</td></tr>';
           return;
@@ -359,5 +316,4 @@
   }
 </script>
 </body>
-
 </html>
