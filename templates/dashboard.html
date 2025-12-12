@@ -263,24 +263,22 @@
 
   // --- HÀM GỬI LỆNH (Đây là chốt chặn quan trọng) ---
   function emit(ev, d) { 
-      // Chỉ chặn đúng hành động điều khiển bơm (user_control)
+      // QUAN TRỌNG: Chỉ chặn hành động điều khiển bơm của Khách
       if(USER_ROLE === 'VIEWER' && ev === 'user_control') {
-          alert("🚫 CHẾ ĐỘ KHÁCH\n\nBạn không được phép Bật/Tắt bơm!");
+          alert("🚫 CHẾ ĐỘ KHÁCH\n\nBạn chỉ được xem, không được Bật/Tắt bơm!");
           return; 
       }
       
-      // Các hành động khác (chọn vùng, chọn chế độ Auto/Manual...) THẢ GA
+      // Lệnh thoát (exit_dashboard) hay chọn vùng sẽ đi qua đây bình thường
       client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: d})); 
   }
 
   function pump(st) { emit('user_control', {pump: st}); }
   
   function exit() { 
-      if(USER_ROLE === 'VIEWER') { 
-          alert("Khách không được thoát, phải chờ Admin!"); 
-          return;
+      if(confirm("Bạn muốn quay lại màn hình chính?")) { 
+          emit('exit_dashboard', {}); 
       }
-      if(confirm("Thoát? Bơm sẽ TẮT.")) emit('exit_dashboard', {}); 
   }
   
   function openCityPopup() {
@@ -361,5 +359,6 @@
 </script>
 </body>
 </html>
+
 
 
