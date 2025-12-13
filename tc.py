@@ -10,10 +10,10 @@ import google.generativeai as genai
 app = Flask(__name__)
 app.secret_key = 'thao_cute_sieu_cap_vipro' # <--- Bắt buộc 
 
-# TÀI KHOẢN (Bạn có thể sửa pass ở đây)
+# TÀI KHOẢN
 USERS = {
     'admin': {'pass': 'admin123', 'role': 'ADMIN'},  # Chủ vườn
-    'khach': {'pass': '1111',      'role': 'VIEWER'} # Khách xem
+    'khach': {'pass': '1111',       'role': 'VIEWER'} # Khách xem
 }
 
 # CONFIG BACKEND
@@ -44,7 +44,7 @@ except Exception as e:
 CRITICAL_LEVEL = 26 
 FLOOD_LEVEL = 90
 REGIONAL_DB = {
-    'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68)}, # (Rút gọn cho ngắn)
+    'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68)},
     'CENTRAL': {"Đà Nẵng":(16.05,108.20), "Huế":(16.46,107.59)},
     'SOUTH': {"TP.HCM":(10.82,106.62), "Cần Thơ":(10.04,105.74)}
 }
@@ -53,10 +53,12 @@ for r in REGIONAL_DB.values(): ALL_CITIES.update(r)
 
 BROKER = "broker.hivemq.com"
 PREFIX = "thaocute_smartgarden/"
+
+# CẬP NHẬT: Thêm 'ai_target' vào state để lưu độ ẩm mục tiêu
 state = {
     'step': 0, 'region': 'NORTH', 'mode': 'NONE', 'location': "Đang định vị...", 
     'lat': None, 'lon': None, 'soil': 0, 'temp': 25.0, 'humidity': 80, 'rain': 0.0,
-    'ai_timing': "...", 'ai_reason': "...", 'pump': False, 'warning': "", 'last_ai_call': 0
+    'ai_timing': "...", 'ai_reason': "...", 'ai_target': "...", 'pump': False, 'warning': "", 'last_ai_call': 0
 }
 mqtt_client = mqtt.Client()
 
@@ -64,7 +66,6 @@ mqtt_client = mqtt.Client()
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    # 1. Nếu chưa đăng nhập -> Trả về Login HTML
     if 'user' not in session:
         error = None
         if request.method == 'POST':
@@ -78,7 +79,6 @@ def home():
                 error = "Sai tên hoặc mật khẩu!"
         return render_template('login.html', error=error)
     
-    # 2. Nếu đã đăng nhập -> Trả về Dashboard HTML kèm Role
     return render_template('dashboard.html', user=session['user'], role=session['role'])
 
 @app.route('/logout')
@@ -89,7 +89,7 @@ def logout():
 @app.route('/api/history')
 def get_history():
     date_str = request.args.get('date')
-    if db_collection is None: return jsonify([]) # Đã fix lỗi is None
+    if db_collection is None: return jsonify([])
     logs = list(db_collection.find({"date": date_str}, {'_id': 0}).sort("created_at", -1))
     return jsonify(logs)
 
@@ -129,6 +129,7 @@ def ask_gemini(force=False):
     if state['mode'] != 'AUTO' or not model: return 
     now = time.time()
     is_emergency = state['soil'] < CRITICAL_LEVEL
+    
     if not force:
         if is_emergency and (now - state['last_ai_call'] < 15): return
         if not is_emergency and (now - state['last_ai_call'] < 120): return
@@ -136,18 +137,38 @@ def ask_gemini(force=False):
     state['warning'] = "KHẨN CẤP: ĐẤT QUÁ KHÔ!" if is_emergency else ("CẢNH BÁO: NGẬP!" if state['soil'] >= FLOOD_LEVEL else "")
     broadcast()
 
-    prompt = f"Đóng vai kỹ sư nông nghiệp. Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm. Trả về JSON: {{ 'decision': 'ON/OFF', 'timing': '...', 'reason': '...' }}"
+    # >>> CẬP NHẬT PROMPT MỚI <<<
+    prompt = f"""
+    Đóng vai kỹ sư nông nghiệp.
+    Dữ liệu: Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm.
+    Khẩn cấp (<26%): {is_emergency}.
+    
+    Yêu cầu trả về đúng định dạng JSON: 
+    {{ "decision": "ON hoặc OFF", "timing": "...", "target": "XX%", "reason": "..." }}
+    
+    Lưu ý:
+    - "target": Độ ẩm mục tiêu để dừng bơm (bạn phải tự dự đoán).
+    - "timing": Mô tả ngắn gọn bao giờ tưới(bắt buộc phải có thời gian nhất định) và độ ẩm dự đoán là bao nhiêu (ví dụ: cần tưới sau 2 giờ nước khi độ ẩm xuống 30%).
+    - "reason": Lý do ngắn gọn giải thích tại sao tưới đến độ ẩm đấy (mưa, nắng, đất khô...).
+    """
+    
     try:
         res = model.generate_content(prompt)
         match = re.search(r'\{.*\}', res.text, re.DOTALL)
         if match:
             data = json.loads(match.group())
             dec = data.get('decision', 'OFF').upper()
-            state['ai_timing'] = data.get('timing', '...'); state['ai_reason'] = data.get('reason', '...')
+            
+            # Cập nhật thông tin từ AI trả về
+            state['ai_timing'] = data.get('timing', '...')
+            state['ai_reason'] = data.get('reason', '...')
+            state['ai_target'] = data.get('target', '...') # <--- Lấy thêm target
+            
             state['last_ai_call'] = now 
-            log_event("AI_AUTO", f"Quyết định: {dec}. {state['ai_reason']}")
+            log_event("AI_AUTO", f"Quyết định: {dec}. Mục tiêu: {state['ai_target']}. {state['ai_reason']}")
             control_pump(dec == 'ON', "AI Logic")
-    except: pass
+    except Exception as e: 
+        print(f"AI Error: {e}")
     broadcast()
 
 def control_pump(on, source="System"):
