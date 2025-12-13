@@ -255,14 +255,17 @@
 </div>
 
 <script>
+    // --- CẤU HÌNH KẾT NỐI ---
     const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
     const PREFIX = "thaocute_smartgarden/";
-    // Lấy Role từ Flask truyền sang
-    const ROLE = "{{ role }}"; 
     
-    const client = mqtt.connect(BROKER, { keepalive: 60, clientId: 'web_'+Math.random().toString(16).substr(2,8) });
-    
-    // CẤU HÌNH LIST THÀNH PHỐ
+    // Lấy Role từ Flask: Nếu lỗi thì mặc định là VIEWER cho an toàn
+    const ROLE = "{{ role }}" || "VIEWER"; 
+
+    // Tạo ID ngẫu nhiên để không bị trùng kết nối
+    const client = mqtt.connect(BROKER, { keepalive: 60, clientId: 'web_' + Math.random().toString(16).substr(2, 8) });
+
+    // Cấu hình danh sách thành phố (để dùng cho Admin chọn)
     const CITIES = { 
         'NORTH': ["Hà Nội", "Hải Phòng", "Quảng Ninh", "Lào Cai", "Sơn La"], 
         'CENTRAL': ["Thanh Hóa", "Đà Nẵng", "Huế", "Nha Trang", "Nghệ An"], 
@@ -271,110 +274,149 @@
     let currentRegion = 'NORTH'; 
     let rawHistoryData = [];
 
-    // --- HÀM CHECK DISPLAY (ĐÃ SỬA ĐỂ KHÔNG BỊ LỖI Ở KHÁCH) ---
+    // --- 1. HÀM HIỂN THỊ GIAO DIỆN ---
     function checkDisplay(step) {
-        // Nếu là khách -> Luôn hiện màn hình chính, bỏ qua mấy màn hình chọn
+        // Nếu là KHÁCH: Luôn hiện thẳng Dashboard, bỏ qua các bước chọn
         if (ROLE === 'VIEWER') { 
-            const app = document.getElementById('mainApp');
-            if (app) app.style.display='block'; 
+            if(document.getElementById('mainApp')) document.getElementById('mainApp').style.display = 'block'; 
+            if(document.getElementById('screenRegion')) document.getElementById('screenRegion').style.display = 'none';
+            if(document.getElementById('screenMode')) document.getElementById('screenMode').style.display = 'none';
             return; 
         }
 
-        // Nếu là Admin -> Xử lý ẩn hiện bình thường
-        const ids = ['screenRegion','screenMode','mainApp'];
-        ids.forEach(id => {
-            const el = document.getElementById(id);
-            if(el) el.style.display='none';
+        // Nếu là ADMIN: Ẩn hết rồi hiện từng bước
+        ['screenRegion', 'screenMode', 'mainApp'].forEach(id => {
+            if(document.getElementById(id)) document.getElementById(id).style.display = 'none';
         });
 
-        if(step===0) { const el = document.getElementById('screenRegion'); if(el) el.style.display='flex'; }
-        else if(step===1) { const el = document.getElementById('screenMode'); if(el) el.style.display='flex'; }
-        else if(step===2) { const el = document.getElementById('mainApp'); if(el) el.style.display='block'; }
+        if (step === 0) document.getElementById('screenRegion').style.display = 'flex';
+        else if (step === 1) document.getElementById('screenMode').style.display = 'flex';
+        else if (step === 2) document.getElementById('mainApp').style.display = 'block';
     }
-    
-    // Gọi ngay khi vào trang để hiện giao diện luôn
+
+    // Chạy ngay lần đầu để hiện khung
     checkDisplay(0);
 
-    function selectRegion(region) {
-        currentRegion = region; 
-        emit('select_region', {region: region});
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => emit('set_gps', { lat: pos.coords.latitude, lon: pos.coords.longitude }),
-                (err) => console.log("Không lấy được GPS")
-            );
+    // --- 2. KẾT NỐI MQTT ---
+    client.on('connect', () => { 
+        console.log("Đã kết nối MQTT!");
+        client.subscribe(PREFIX + 'update'); 
+        
+        // Gửi yêu cầu cập nhật ngay lập tức (để không phải chờ)
+        if(ROLE !== 'VIEWER') {
+            client.publish(PREFIX + 'events', JSON.stringify({event: 'get_status'}));
         }
-    }
+    });
 
-    client.on('connect', () => { client.subscribe(PREFIX + 'update'); });
-    client.on('message', (t, m) => updateUI(JSON.parse(m.toString())));
+    client.on('message', (t, m) => {
+        try {
+            updateUI(JSON.parse(m.toString()));
+        } catch (e) {
+            console.error("Lỗi cập nhật giao diện:", e);
+        }
+    });
 
+    // --- 3. HÀM CẬP NHẬT UI (ĐÃ SỬA LỖI TREO) ---
     function updateUI(d) {
         if (!d) return;
-        if(d.region) currentRegion = d.region; 
+        
+        // Cập nhật vùng và màn hình
+        if (d.region) currentRegion = d.region; 
         checkDisplay(d.step);
 
-        // Hiển thị thông số (Khách và Admin đều thấy)
-        document.getElementById('loc').innerText = d.location || "Chưa chọn vị trí";
-        document.getElementById('soil').innerText = d.soil;
-        document.getElementById('temp').innerText = d.temp + "°";
-        document.getElementById('hum').innerText = d.humidity + "%";
-        document.getElementById('rain').innerText = d.rain || "0";
-        document.getElementById('warn').innerText = d.warning;
-        
-        const soilBox = document.getElementById('soilBox');
-        if (d.soil < 30) { soilBox.style.borderColor = "#d32f2f"; soilBox.style.boxShadow="0 0 15px #ffcdd2"; }
-        else { soilBox.style.borderColor = "#2e7d32"; soilBox.style.boxShadow="none"; }
+        // Hàm hỗ trợ gán text an toàn (không crash nếu thiếu ID)
+        const setText = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
 
-        // --- FIX LỖI QUAN TRỌNG Ở ĐÂY ---
+        // Hiển thị thông số cơ bản
+        setText('loc', d.location || "Đang kết nối...");
+        setText('soil', d.soil);
+        setText('temp', (d.temp !== undefined ? d.temp : '--') + "°");
+        setText('hum', (d.humidity !== undefined ? d.humidity : '--') + "%");
+        setText('rain', d.rain || "0");
+        setText('warn', d.warning || "");
+
+        // Đổi màu vòng tròn độ ẩm
+        const soilBox = document.getElementById('soilBox');
+        if (soilBox) {
+            if (d.soil < 30) { 
+                soilBox.style.borderColor = "#d32f2f"; 
+                soilBox.style.boxShadow = "0 0 15px #ffcdd2"; 
+            } else { 
+                soilBox.style.borderColor = "#2e7d32"; 
+                soilBox.style.boxShadow = "none"; 
+            }
+        }
+
+        // --- FIX QUAN TRỌNG: XỬ LÝ TRẠNG THÁI BƠM ---
         const pSt = document.getElementById('pumpSt');
-        
-        // Chỉ Admin mới có nút btnOn/btnOff để mà ẩn hiện
+        // Tìm nút (Có thể không tồn tại ở giao diện Khách)
         const btnOn = document.getElementById('btnOn');
         const btnOff = document.getElementById('btnOff');
 
         if (d.pump) {
-            pSt.innerText = "💦 ĐANG TƯỚI NƯỚC..."; pSt.style.color = "#1976d2";
-            // Nếu nút tồn tại (Admin) thì mới chỉnh, Khách không có thì bỏ qua
-            if(btnOn && btnOff) { btnOn.style.display='none'; btnOff.style.display='flex'; }
+            if(pSt) { pSt.innerText = "💦 ĐANG TƯỚI NƯỚC..."; pSt.style.color = "#1976d2"; }
+            // Chỉ ẩn hiện nút NẾU nút đó có tồn tại
+            if (btnOn) btnOn.style.display = 'none';
+            if (btnOff) btnOff.style.display = 'flex';
         } else {
-            pSt.innerText = "MÁY BƠM ĐANG TẮT"; pSt.style.color = "#555";
-            if(btnOn && btnOff) { btnOn.style.display='flex'; btnOff.style.display='none'; }
+            if(pSt) { pSt.innerText = "MÁY BƠM ĐANG TẮT"; pSt.style.color = "#555"; }
+            if (btnOn) btnOn.style.display = 'flex';
+            if (btnOff) btnOff.style.display = 'none';
         }
 
-        document.getElementById('modeLabel').innerText = (d.mode === 'AUTO') ? "CHẾ ĐỘ: TỰ ĐỘNG (AI)" : "CHẾ ĐỘ: THỦ CÔNG";
+        // --- XỬ LÝ CHẾ ĐỘ (AUTO/MANUAL) ---
+        setText('modeLabel', (d.mode === 'AUTO') ? "CHẾ ĐỘ: TỰ ĐỘNG (AI)" : "CHẾ ĐỘ: THỦ CÔNG");
+        
         const pAuto = document.getElementById('panelAuto');
         const pManual = document.getElementById('panelManual');
 
-        // Logic hiển thị Panel
         if (ROLE === 'VIEWER') {
-             // Khách: Luôn ẩn Auto, hiện Manual (dạng xem)
-             if(pAuto) pAuto.style.display = 'none'; 
-             if(pManual) pManual.style.display = 'block';
+            // Khách: Luôn ẩn bảng AI, hiện bảng Manual (nhưng bị khóa)
+            if (pAuto) pAuto.style.display = 'none';
+            if (pManual) pManual.style.display = 'block';
         } else {
-            // Admin: Theo mode của server
+            // Admin: Hiện theo chế độ thực
             if (d.mode === 'AUTO') {
-                pAuto.style.display = 'block'; pManual.style.display = 'none';
-                document.getElementById('aiTarget').innerText = (d.ai_target || "--") + "%";
-                document.getElementById('aiTiming').innerText = d.ai_timing || "Đang chờ...";
-                document.getElementById('aiReason').innerText = d.ai_reason || "Hệ thống đang ổn định";
+                if (pAuto) pAuto.style.display = 'block';
+                if (pManual) pManual.style.display = 'none';
+                setText('aiTarget', (d.ai_target || "--") + "%");
+                setText('aiTiming', d.ai_timing || "Đang chờ...");
+                setText('aiReason', d.ai_reason || "Hệ thống ổn định");
             } else {
-                pAuto.style.display = 'none'; pManual.style.display = 'block';
+                if (pAuto) pAuto.style.display = 'none';
+                if (pManual) pManual.style.display = 'block';
             }
         }
     }
 
-    function emit(ev, data) { if (ROLE === 'VIEWER') return; client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: data || {}})); }
+    // --- CÁC HÀM SỰ KIỆN (ADMIN ONLY) ---
+    function emit(ev, data) { 
+        if (ROLE === 'VIEWER') return; // Khách không gửi được lệnh
+        client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: data || {}})); 
+    }
+    
+    function selectRegion(region) {
+        currentRegion = region; 
+        emit('select_region', {region: region});
+        // Tự động lấy GPS nếu được
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => emit('set_gps', { lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                (err) => console.log("GPS Error")
+            );
+        }
+    }
+
     function pump(st) { emit('user_control', {pump: st}); }
     function exit() { if(confirm("Về menu chọn chế độ?")) emit('exit_dashboard', {}); }
 
     function openCityPopup() {
         if (ROLE === 'VIEWER') return;
         const list = document.getElementById('cityList'); 
+        if(!list) return;
         list.innerHTML = "";
         const citiesToShow = CITIES[currentRegion] || [];
-        if(citiesToShow.length === 0) { list.innerHTML = "<div style='padding:20px; text-align:center'>Chưa có dữ liệu</div>"; }
-
+        
         citiesToShow.forEach(c => {
             let div = document.createElement('div');
             div.className = "city-item";
@@ -385,19 +427,24 @@
         document.getElementById('cityPopup').style.display = 'flex';
     }
 
-    // --- LỊCH SỬ (GIỮ NGUYÊN) ---
+    // --- LỊCH SỬ ---
     function openHistory() {
         document.getElementById('historyPopup').style.display = 'flex';
-        document.getElementById('dateInput').valueAsDate = new Date();
-        loadHistory();
+        const dInput = document.getElementById('dateInput');
+        if(dInput) {
+            dInput.valueAsDate = new Date();
+            loadHistory();
+        }
     }
 
     function loadHistory() {
-        const d = document.getElementById('dateInput').value;
+        const dInput = document.getElementById('dateInput');
         const tbody = document.getElementById('histBody');
+        if(!dInput || !tbody) return;
+
         tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; padding:20px'>Đang tải...</td></tr>";
 
-        fetch('/api/history?date=' + d)
+        fetch('/api/history?date=' + dInput.value)
             .then(r => r.json())
             .then(data => {
                 rawHistoryData = data || [];
@@ -408,17 +455,22 @@
 
     function renderHistoryTable() {
         const tbody = document.getElementById('histBody');
-        const filter = document.getElementById('filterType').value;
+        const filterEl = document.getElementById('filterType');
+        if(!tbody) return;
+
+        const filter = filterEl ? filterEl.value : 'ALL';
         tbody.innerHTML = "";
 
         if (rawHistoryData.length === 0) {
             tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; padding:20px; color:#999'>Không có dữ liệu</td></tr>";
-            document.getElementById('pumpCountText').innerText = "0";
+            const pc = document.getElementById('pumpCountText');
+            if(pc) pc.innerText = "0";
             return;
         }
 
         const totalPump = rawHistoryData.filter(i => i.action.includes('ON') || i.action.includes('BẬT') || i.action.includes('PUMP')).length;
-        document.getElementById('pumpCountText').innerText = totalPump;
+        const pc = document.getElementById('pumpCountText');
+        if(pc) pc.innerText = totalPump;
 
         const filteredData = rawHistoryData.filter(i => {
             if (filter === 'ALL') return true;
@@ -443,4 +495,5 @@
 </script>
 </body>
 </html>
+
 
