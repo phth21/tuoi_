@@ -262,10 +262,9 @@
     // Lấy Role từ Flask: Nếu lỗi thì mặc định là VIEWER cho an toàn
     const ROLE = "{{ role }}" || "VIEWER"; 
 
-    // Tạo ID ngẫu nhiên để không bị trùng kết nối
+    // Tạo ID ngẫu nhiên
     const client = mqtt.connect(BROKER, { keepalive: 60, clientId: 'web_' + Math.random().toString(16).substr(2, 8) });
 
-    // Cấu hình danh sách thành phố (để dùng cho Admin chọn)
     const CITIES = { 
         'NORTH': ["Hà Nội", "Hải Phòng", "Quảng Ninh", "Lào Cai", "Sơn La"], 
         'CENTRAL': ["Thanh Hóa", "Đà Nẵng", "Huế", "Nha Trang", "Nghệ An"], 
@@ -274,17 +273,23 @@
     let currentRegion = 'NORTH'; 
     let rawHistoryData = [];
 
-    // --- 1. HÀM HIỂN THỊ GIAO DIỆN ---
+    // --- 1. HÀM HIỂN THỊ GIAO DIỆN (QUAN TRỌNG) ---
     function checkDisplay(step) {
-        // Nếu là KHÁCH: Luôn hiện thẳng Dashboard, bỏ qua các bước chọn
+        // NẾU LÀ KHÁCH: Bắt buộc hiện ngay màn hình chính
         if (ROLE === 'VIEWER') { 
-            if(document.getElementById('mainApp')) document.getElementById('mainApp').style.display = 'block'; 
-            if(document.getElementById('screenRegion')) document.getElementById('screenRegion').style.display = 'none';
-            if(document.getElementById('screenMode')) document.getElementById('screenMode').style.display = 'none';
+            const app = document.getElementById('mainApp');
+            if(app) {
+                app.style.display = 'block'; 
+                // Ẩn luôn các màn hình thừa nếu lỡ nó hiện ra
+                const r = document.getElementById('screenRegion');
+                const m = document.getElementById('screenMode');
+                if(r) r.style.display='none';
+                if(m) m.style.display='none';
+            }
             return; 
         }
 
-        // Nếu là ADMIN: Ẩn hết rồi hiện từng bước
+        // NẾU LÀ ADMIN: Xử lý từng bước như cũ
         ['screenRegion', 'screenMode', 'mainApp'].forEach(id => {
             if(document.getElementById(id)) document.getElementById(id).style.display = 'none';
         });
@@ -294,48 +299,45 @@
         else if (step === 2) document.getElementById('mainApp').style.display = 'block';
     }
 
-    // Chạy ngay lần đầu để hiện khung
+    // Chạy ngay khi load trang
     checkDisplay(0);
 
-    // --- 2. KẾT NỐI MQTT ---
+    // --- 2. KẾT NỐI MQTT (ĐÃ SỬA LỖI CHO KHÁCH) ---
     client.on('connect', () => { 
         console.log("Đã kết nối MQTT!");
         client.subscribe(PREFIX + 'update'); 
         
-        // Gửi yêu cầu cập nhật ngay lập tức (để không phải chờ)
-        if(ROLE !== 'VIEWER') {
-            client.publish(PREFIX + 'events', JSON.stringify({event: 'get_status'}));
-        }
+        // --- SỬA Ở ĐÂY: KHÁCH CŨNG ĐƯỢC QUYỀN HỎI THÔNG SỐ ---
+        // Gửi lệnh 'get_status' để thiết bị trả về nhiệt độ/độ ẩm ngay lập tức
+        client.publish(PREFIX + 'events', JSON.stringify({event: 'get_status'}));
     });
 
     client.on('message', (t, m) => {
         try {
             updateUI(JSON.parse(m.toString()));
         } catch (e) {
-            console.error("Lỗi cập nhật giao diện:", e);
+            console.error("Lỗi data:", e);
         }
     });
 
-    // --- 3. HÀM CẬP NHẬT UI (ĐÃ SỬA LỖI TREO) ---
+    // --- 3. CẬP NHẬT GIAO DIỆN AN TOÀN ---
     function updateUI(d) {
         if (!d) return;
         
-        // Cập nhật vùng và màn hình
         if (d.region) currentRegion = d.region; 
-        checkDisplay(d.step);
+        checkDisplay(d.step); // Cập nhật màn hình
 
-        // Hàm hỗ trợ gán text an toàn (không crash nếu thiếu ID)
+        // Hàm điền text an toàn
         const setText = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
 
-        // Hiển thị thông số cơ bản
-        setText('loc', d.location || "Đang kết nối...");
+        setText('loc', d.location || "Đang cập nhật...");
         setText('soil', d.soil);
         setText('temp', (d.temp !== undefined ? d.temp : '--') + "°");
         setText('hum', (d.humidity !== undefined ? d.humidity : '--') + "%");
         setText('rain', d.rain || "0");
         setText('warn', d.warning || "");
 
-        // Đổi màu vòng tròn độ ẩm
+        // Xử lý màu sắc độ ẩm
         const soilBox = document.getElementById('soilBox');
         if (soilBox) {
             if (d.soil < 30) { 
@@ -347,15 +349,14 @@
             }
         }
 
-        // --- FIX QUAN TRỌNG: XỬ LÝ TRẠNG THÁI BƠM ---
+        // Xử lý hiển thị Bơm (Khách không có nút -> Phải kiểm tra kỹ)
         const pSt = document.getElementById('pumpSt');
-        // Tìm nút (Có thể không tồn tại ở giao diện Khách)
         const btnOn = document.getElementById('btnOn');
         const btnOff = document.getElementById('btnOff');
 
         if (d.pump) {
             if(pSt) { pSt.innerText = "💦 ĐANG TƯỚI NƯỚC..."; pSt.style.color = "#1976d2"; }
-            // Chỉ ẩn hiện nút NẾU nút đó có tồn tại
+            // Chỉ chỉnh nút nếu là Admin (nút tồn tại)
             if (btnOn) btnOn.style.display = 'none';
             if (btnOff) btnOff.style.display = 'flex';
         } else {
@@ -364,18 +365,18 @@
             if (btnOff) btnOff.style.display = 'none';
         }
 
-        // --- XỬ LÝ CHẾ ĐỘ (AUTO/MANUAL) ---
+        // Xử lý Chế độ
         setText('modeLabel', (d.mode === 'AUTO') ? "CHẾ ĐỘ: TỰ ĐỘNG (AI)" : "CHẾ ĐỘ: THỦ CÔNG");
         
         const pAuto = document.getElementById('panelAuto');
         const pManual = document.getElementById('panelManual');
 
         if (ROLE === 'VIEWER') {
-            // Khách: Luôn ẩn bảng AI, hiện bảng Manual (nhưng bị khóa)
+            // Khách: Ẩn Auto, Hiện Manual (dạng khóa)
             if (pAuto) pAuto.style.display = 'none';
             if (pManual) pManual.style.display = 'block';
         } else {
-            // Admin: Hiện theo chế độ thực
+            // Admin: Hiện đúng theo chế độ
             if (d.mode === 'AUTO') {
                 if (pAuto) pAuto.style.display = 'block';
                 if (pManual) pManual.style.display = 'none';
@@ -389,20 +390,19 @@
         }
     }
 
-    // --- CÁC HÀM SỰ KIỆN (ADMIN ONLY) ---
+    // --- CÁC HÀM SỰ KIỆN ---
     function emit(ev, data) { 
-        if (ROLE === 'VIEWER') return; // Khách không gửi được lệnh
+        if (ROLE === 'VIEWER') return; 
         client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: data || {}})); 
     }
     
     function selectRegion(region) {
         currentRegion = region; 
         emit('select_region', {region: region});
-        // Tự động lấy GPS nếu được
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 (pos) => emit('set_gps', { lat: pos.coords.latitude, lon: pos.coords.longitude }),
-                (err) => console.log("GPS Error")
+                (err) => console.log("Lỗi GPS")
             );
         }
     }
@@ -443,7 +443,7 @@
         if(!dInput || !tbody) return;
 
         tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; padding:20px'>Đang tải...</td></tr>";
-
+        
         fetch('/api/history?date=' + dInput.value)
             .then(r => r.json())
             .then(data => {
@@ -495,5 +495,6 @@
 </script>
 </body>
 </html>
+
 
 
