@@ -17,7 +17,7 @@ USERS = {
 }
 
 # CONFIG BACKEND
-GEMINI_API_KEY = os.getenv("GEMINI_KEY", "AIzaSyBXGeCm85AMf3q0G31x7WL1U8ykewUf2BA").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_KEY", "AIzaSyDnmQNHRgXXPgl-ZhK-Et8EiAW9MjTh-5s").strip()
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
 
@@ -55,13 +55,16 @@ for r in REGIONAL_DB.values(): ALL_CITIES.update(r)
 
 BROKER = "broker.hivemq.com"
 PREFIX = "thaocute_smartgarden/"
+
+# State khởi tạo (Thêm last_ai_call để logic cooldown hoạt động)
 state = {
-    'step': 0, 'region': 'NORTH', 'mode': 'NONE', 'location': "Chưa định vị", 
+    'step': 0, 'region': 'NORTH', 'mode': 'NONE', 'location': "Đang dò...", 
     'lat': None, 'lon': None, 'soil': 0, 'temp': 25.0, 'humidity': 80, 'rain': 0.0,
     'ai_timing': "...", 'ai_target': "...", 'ai_reason': "...",
     'pump': False, 'warning': "", 'last_ai_call': 0
 }
-mqtt_client = mqtt.Client()
+
+mqtt_client = mqtt.Client(client_id=f"Render_Server_{int(time.time())}")
 
 # ====================== ROUTE WEB (Flask) ======================
 
@@ -88,14 +91,9 @@ def logout():
 
 @app.route('/api/history')
 def get_history():
-    # Mặc định lấy ngày hôm nay nếu không truyền date
-    date_str = request.args.get('date', datetime.utcnow().strftime("%Y-%m-%d"))
+    date_str = request.args.get('date')
     if db_collection is None: return jsonify([])
-    # Lấy 20 dòng mới nhất
-    logs = list(db_collection.find().sort("created_at", -1).limit(20))
-    # Convert Object ID for JSON
-    for log in logs:
-        if '_id' in log: del log['_id']
+    logs = list(db_collection.find({"date": date_str}, {'_id': 0}).sort("created_at", -1))
     return jsonify(logs)
 
 # ====================== LOGIC HỆ THỐNG ======================
@@ -129,20 +127,16 @@ def update_weather():
             state['temp'] = r['main']['temp']; state['humidity'] = r['main']['humidity']
             state['rain'] = r.get('rain', {}).get('1h', 0.0)
             
-            # Cập nhật tên địa điểm từ API
-            new_location = r.get('name', '')
-            if r.get('sys', {}).get('country') == 'VN':
-                # Nếu là VN, cố gắng giữ tên đàng hoàng
-                state['location'] = new_location if new_location else "Việt Nam"
-            else:
-                state['location'] = new_location
-
+            # Cập nhật tên địa điểm
+            if "Thủ công" not in state['location']: 
+                state['location'] = r.get('name') + " (VN)"
+            
             if state['mode'] == 'AUTO': 
                 threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
     except: pass
     broadcast()
 
-# ====================== AI LOGIC (UPDATE THEO YÊU CẦU) ======================
+# --- LOGIC AI MỚI (CHÍNH XÁC NHƯ BẠN YÊU CẦU) ---
 def ask_gemini(force=False):
     if state['mode'] != 'AUTO': return 
     
@@ -159,10 +153,6 @@ def ask_gemini(force=False):
     is_emergency = state['soil'] < CRITICAL_LEVEL
     
     # === LOGIC COOLDOWN (QUAN TRỌNG) ===
-    # 1. Nếu Force (ép buộc) -> Chạy luôn
-    # 2. Nếu Khẩn cấp -> Chạy luôn NHƯNG phải cách lần trước tối thiểu 15s (tránh spam khi cảm biến lỗi)
-    # 3. Bình thường -> Phải chờ 120s (2 phút)
-    
     time_diff = now - state['last_ai_call']
     
     if force:
@@ -245,17 +235,15 @@ def on_message(client, userdata, msg):
                     control_pump(False, "Safety Cutoff")
                 
                 elif state['mode'] == 'AUTO':
-                    # Kiểm tra logic ngắt bơm khi đạt Target AI
+                    if state['soil'] < CRITICAL_LEVEL: 
+                        threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
+                    
                     if state['pump']:
                         nums = re.findall(r'\d+', str(state['ai_target']))
                         if nums:
                             target_val = int(nums[0])
-                            if state['soil'] >= target_val:
+                            if state['soil'] >= (target_val + 3):
                                 control_pump(False, "AI Target Reached")
-                    
-                    # Gọi AI logic
-                    threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
-                
                 broadcast()
             except: pass
 
@@ -266,12 +254,14 @@ def on_message(client, userdata, msg):
             if evt == 'select_region':
                 state['region'] = data['region']
                 state['step'] = 1
+                broadcast()
                 
             elif evt == 'enter_mode':
                 state['mode'] = data['mode']; state['step'] = 2
                 log_event("MODE_CHANGE", f"Chuyển chế độ {state['mode']}")
                 if state['mode'] == 'AUTO': threading.Thread(target=ask_gemini, kwargs={'force': True}, daemon=True).start()
-                
+                broadcast()
+
             elif evt == 'exit_dashboard':
                 state['step'] = 1; state['mode'] = 'NONE'; control_pump(False)
             
@@ -279,14 +269,14 @@ def on_message(client, userdata, msg):
                 city = data.get('city')
                 if city in ALL_CITIES:
                     state['lat'], state['lon'] = ALL_CITIES[city]
-                    state['location'] = f"{city}"
+                    state['location'] = f"{city} (Thủ công)"
                     threading.Thread(target=update_weather, daemon=True).start()
 
-            # --- XỬ LÝ GPS THỰC TẾ ---
             elif evt == 'set_gps':
                 state['lat'] = data['lat']
                 state['lon'] = data['lon']
-                state['location'] = "Đang lấy tên..." # Cập nhật trạng thái chờ
+                state['location'] = "📍 Đang lấy tên..."
+                broadcast()
                 print(f"🌍 Nhận GPS: {state['lat']}, {state['lon']}")
                 threading.Thread(target=update_weather, daemon=True).start()
             
@@ -296,12 +286,19 @@ def on_message(client, userdata, msg):
     except: pass
 
 def run_mqtt():
-    mqtt_client.on_connect = lambda c,u,f,rc: (c.subscribe([ (PREFIX+"esp/data",0), (PREFIX+"events",0) ]), print("MQTT READY"))
+    mqtt_client.on_connect = lambda c,u,f,rc: (c.subscribe([ (PREFIX+"esp/data",0), (PREFIX+"events",0) ]), print("✅ MQTT CONNECTED"))
     mqtt_client.on_message = on_message
-    try: mqtt_client.connect(BROKER, 1883, 60); mqtt_client.loop_forever()
-    except: print("Lỗi MQTT")
+    try: 
+        mqtt_client.connect(BROKER, 1883, 60)
+        mqtt_client.loop_start() # Dùng loop_start cho Render
+    except Exception as e: print(f"❌ Lỗi MQTT: {e}")
 
-threading.Thread(target=run_mqtt, daemon=True).start()
+# --- KHỞI ĐỘNG MQTT Ở GLOBAL SCOPE CHO RENDER ---
+try:
+    run_mqtt()
+    print("--- Background Thread Started ---")
+except: pass
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
