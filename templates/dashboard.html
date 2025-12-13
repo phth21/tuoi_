@@ -47,7 +47,7 @@
   .summary-box { background: #e3f2fd; color: #0984e3; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; display: none; }
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
   .emergency { animation: blink 1s infinite; border-color: red !important; } @keyframes blink { 50% { opacity: 0.5; } }
-  
+   
   /* Style cho nút bị disable (Dành cho Viewer) */
   .btn-disabled { opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(100%); }
 
@@ -118,6 +118,9 @@
            <div style="background:#e3f2fd; padding:25px; border-radius:20px; border-left:6px solid #0984e3">
                <h3>🤖 AI Control</h3>
                <p>🕒 <b>Lần tưới kế:</b> <span id="aiTime" style="color:#d63031; font-weight:bold">...</span></p>
+               
+               <p>🎯 <b>Mục tiêu dừng:</b> <span id="aiTarget" style="color:#d63384; font-weight:bold">--%</span></p>
+               
                <p>💡 <i><span id="aiReason">...</span></i></p>
            </div>
         </div>
@@ -180,7 +183,7 @@
   const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
   const PREFIX = "thaocute_smartgarden/";
   const client = mqtt.connect(BROKER_URL);
-  
+   
   // Lấy vai trò từ Server (Backend Template Render)
   const USER_ROLE = "{{ role }}"; 
 
@@ -216,8 +219,11 @@
       if (d.mode === 'AUTO') {
           pAuto.style.display = 'block';
           pManual.style.display = 'none';
+          
+          // Cập nhật thông tin AI (Thời gian, lý do, mục tiêu)
           document.getElementById('aiTime').innerText = d.ai_timing;
           document.getElementById('aiReason').innerText = d.ai_reason;
+          document.getElementById('aiTarget').innerText = d.ai_target || "--%"; // [MỚI]
       } 
       else if (d.mode === 'MANUAL') {
           pAuto.style.display = 'none';
@@ -263,22 +269,22 @@
   }
 
   function pump(st) { emit('user_control', {pump: st}); }
-  
+   
   function exit() { 
       if(confirm("Bạn muốn quay lại màn hình chính?")) { 
           emit('exit_dashboard', {}); 
       }
   }
-  
+   
   function openCityPopup() {
-     if(USER_ROLE === 'VIEWER') { alert("Khách không được đổi địa điểm!"); return; }
-     const list = document.getElementById('cityList'); list.innerHTML = "";
-     (REGIONAL_CITIES[currentRegion] || []).forEach(c => {
-         let btn = document.createElement('button'); btn.className = 'city-opt'; btn.innerText = c;
-         btn.onclick = () => { emit('set_city', {city: c}); document.getElementById('cityPopup').style.display = 'none'; };
-         list.appendChild(btn);
-     });
-     document.getElementById('cityPopup').style.display = 'flex';
+      if(USER_ROLE === 'VIEWER') { alert("Khách không được đổi địa điểm!"); return; }
+      const list = document.getElementById('cityList'); list.innerHTML = "";
+      (REGIONAL_CITIES[currentRegion] || []).forEach(c => {
+          let btn = document.createElement('button'); btn.className = 'city-opt'; btn.innerText = c;
+          btn.onclick = () => { emit('set_city', {city: c}); document.getElementById('cityPopup').style.display = 'none'; };
+          list.appendChild(btn);
+      });
+      document.getElementById('cityPopup').style.display = 'flex';
   }
 
   function openHistory() { 
