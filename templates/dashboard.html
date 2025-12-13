@@ -1,58 +1,59 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Smart Garden Dashboard</title>
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
-<style>
-  :root { --bg: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
-  body { margin:0; font-family: 'Nunito', sans-serif; background: var(--bg); min-height: 100vh; display: flex; justify-content: center; align-items: center; color: #2d3436; padding: 10px; }
-  .screen { position: fixed; top:0; left:0; width:100%; height:100%; z-index: 99; display:flex; flex-direction:column; justify-content:center; align-items:center; background: rgba(255,255,255,0.99); transition: 0.3s; }
-  .btn { padding: 18px 40px; border:none; border-radius:15px; font-weight:bold; cursor:pointer; color:white; margin: 10px; font-size: 1.2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-  .n { background: #6c5ce7; } .c { background: #0984e3; } .s { background: #d63031; }
-  #mainApp { display: none; width: 100%; max-width: 1000px; }
-  .card { background: rgba(255,255,255,0.96); border-radius: 30px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); position: relative; }
-  .back-btn { position: absolute; top: 20px; left: 20px; background: #ff7675; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; z-index: 10; }
-  .logout-btn { position: absolute; top: 20px; right: 20px; background: #636e72; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.9rem; }
-  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 40px; margin-top: 40px; }
-  .soil-circle { width: 240px; height: 240px; border-radius: 50%; border: 15px solid #dfe6e9; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; background: white; transition: border-color 0.3s; }
-  .soil-num { font-size: 4.5rem; font-weight: 900; color: #00b894; line-height: 1; }
-  .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 25px; }
-  .stat-box { background: #f1f2f6; padding: 15px; border-radius: 12px; text-align: center; font-weight: bold; color: #555; }
-  .stat-val { display: block; font-size: 1.3rem; color: #0984e3; }
-  .mode-container { display: flex; gap: 20px; }
-  .mode-card { background:white; padding:40px; border-radius:20px; cursor:pointer; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); width:200px; border:3px solid transparent; }
-  .mode-card:hover { border-color: #00b894; transform: translateY(-5px); }
-  #panelAuto, #panelManual { display: none; animation: fadeIn 0.5s; }
-  .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .p-btn { padding: 30px; border:none; border-radius:15px; font-weight:bold; color:white; font-size:1.3rem; cursor:pointer; width: 100%; transition: 0.3s; }
-  .bon { background: #00b894; } .boff { background: #636e72; }
-  #cityPopup, #historyPopup { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999; justify-content:center; align-items:center; }
-  .popup-box { background:white; padding:25px; border-radius:20px; width:300px; text-align:center; max-height:80vh; overflow-y:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
-  .city-opt { display:block; width:100%; padding:12px; border:1px solid #eee; background:white; margin-bottom:5px; border-radius:8px; cursor:pointer; font-weight:bold; transition: 0.2s; }
-  .city-opt:hover { background:#f0f0f0; color:#0984e3; transform: translateX(5px); }
-  .hist-btn { display:inline-block; margin-top:10px; background:#2d3436; color:white; padding:10px 20px; border-radius:8px; font-weight:bold; border:none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0, 0.3); transition: 0.2s; }
-  .table-container { max-height: 350px; overflow-y: auto; border-radius: 8px; border: 1px solid #eee; margin-top: 10px; }
-  .hist-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; text-align: left; }
-  .hist-table th { position: sticky; top: 0; background: #f1f2f6; color: #636e72; padding: 12px; font-weight: 800; z-index: 1; }
-  .hist-table td { padding: 12px; border-bottom: 1px solid #eee; color: #2d3436; vertical-align: middle; }
-  .badge { padding: 5px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; display: inline-block; min-width: 60px; text-align: center; }
-  .bg-green { background: #e3f9e5; color: #00b894; border: 1px solid #00b894; }
-  .bg-red { background: #ffebeb; color: #d63031; border: 1px solid #d63031; }
-  .bg-blue { background: #e3f2fd; color: #0984e3; border: 1px solid #0984e3; }
-  .filter-bar { display: flex; gap: 10px; margin-bottom: 10px; }
-  .filter-input { padding: 8px; border-radius: 8px; border: 1px solid #ddd; flex: 1; font-weight: bold; }
-  .summary-box { background: #e3f2fd; color: #0984e3; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; display: none; }
-  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-  .emergency { animation: blink 1s infinite; border-color: red !important; } @keyframes blink { 50% { opacity: 0.5; } }
-  
-  /* Style cho nút bị disable (Dành cho Viewer) */
-  .btn-disabled { opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(100%); }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smart Garden Dashboard</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
+        body { margin:0; font-family: 'Nunito', sans-serif; background: var(--bg); min-height: 100vh; display: flex; justify-content: center; align-items: center; color: #2d3436; padding: 10px; }
+        .screen { position: fixed; top:0; left:0; width:100%; height:100%; z-index: 99; display:flex; flex-direction:column; justify-content:center; align-items:center; background: rgba(255,255,255,0.99); transition: 0.3s; }
+        .btn { padding: 18px 40px; border:none; border-radius:15px; font-weight:bold; cursor:pointer; color:white; margin: 10px; font-size: 1.2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .n { background: #6c5ce7; } .c { background: #0984e3; } .s { background: #d63031; }
+        #mainApp { display: none; width: 100%; max-width: 1000px; }
+        .card { background: rgba(255,255,255,0.96); border-radius: 30px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); position: relative; }
+        .back-btn { position: absolute; top: 20px; left: 20px; background: #ff7675; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; z-index: 10; }
+        .logout-btn { position: absolute; top: 20px; right: 20px; background: #636e72; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.9rem; }
+        .layout { display: grid; grid-template-columns: 300px 1fr; gap: 40px; margin-top: 40px; }
+        .soil-circle { width: 240px; height: 240px; border-radius: 50%; border: 15px solid #dfe6e9; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto; background: white; transition: border-color 0.3s; }
+        .soil-num { font-size: 4.5rem; font-weight: 900; color: #00b894; line-height: 1; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        .stat-box { background: #f1f2f6; padding: 15px; border-radius: 12px; text-align: center; font-weight: bold; color: #555; }
+        .stat-val { display: block; font-size: 1.3rem; color: #0984e3; }
+        .mode-container { display: flex; gap: 20px; }
+        .mode-card { background:white; padding:40px; border-radius:20px; cursor:pointer; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); width:200px; border:3px solid transparent; }
+        .mode-card:hover { border-color: #00b894; transform: translateY(-5px); }
+        #panelAuto, #panelManual { display: none; animation: fadeIn 0.5s; }
+        .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .p-btn { padding: 30px; border:none; border-radius:15px; font-weight:bold; color:white; font-size:1.3rem; cursor:pointer; width: 100%; transition: 0.3s; }
+        .bon { background: #00b894; } .boff { background: #636e72; }
+        #cityPopup, #historyPopup { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999; justify-content:center; align-items:center; }
+        .popup-box { background:white; padding:25px; border-radius:20px; width:300px; text-align:center; max-height:80vh; overflow-y:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        .city-opt { display:block; width:100%; padding:12px; border:1px solid #eee; background:white; margin-bottom:5px; border-radius:8px; cursor:pointer; font-weight:bold; transition: 0.2s; }
+        .city-opt:hover { background:#f0f0f0; color:#0984e3; transform: translateX(5px); }
+        .hist-btn { display:inline-block; margin-top:10px; background:#2d3436; color:white; padding:10px 20px; border-radius:8px; font-weight:bold; border:none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0, 0.3); transition: 0.2s; }
+        .table-container { max-height: 350px; overflow-y: auto; border-radius: 8px; border: 1px solid #eee; margin-top: 10px; }
+        .hist-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; text-align: left; }
+        .hist-table th { position: sticky; top: 0; background: #f1f2f6; color: #636e72; padding: 12px; font-weight: 800; z-index: 1; }
+        .hist-table td { padding: 12px; border-bottom: 1px solid #eee; color: #2d3436; vertical-align: middle; }
+        .badge { padding: 5px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; display: inline-block; min-width: 60px; text-align: center; }
+        .bg-green { background: #e3f9e5; color: #00b894; border: 1px solid #00b894; }
+        .bg-red { background: #ffebeb; color: #d63031; border: 1px solid #d63031; }
+        .bg-blue { background: #e3f2fd; color: #0984e3; border: 1px solid #0984e3; }
+        .filter-bar { display: flex; gap: 10px; margin-bottom: 10px; }
+        .filter-input { padding: 8px; border-radius: 8px; border: 1px solid #ddd; flex: 1; font-weight: bold; }
+        .summary-box { background: #e3f2fd; color: #0984e3; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; display: none; }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        .emergency { animation: blink 1s infinite; border-color: red !important; } @keyframes blink { 50% { opacity: 0.5; } }
+        /* Style cho nút bị disable (Dành cho Viewer) */
+        .btn-disabled { opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(100%); }
+        .mqtt-status { position: absolute; bottom: 10px; right: 20px; font-size: 0.8rem; font-weight: bold; color: #aaa; }
+        .status-ok { color: #00b894; } .status-bad { color: #d63031; }
 
-  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .mode-container { flex-direction:column; } }
-</style>
+        @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .mode-container { flex-direction:column; } }
+    </style>
 </head>
 <body>
 
@@ -87,6 +88,8 @@
     <button class="back-btn" onclick="exit()">⬅ Menu</button>
     <a href="/logout" class="logout-btn">Đăng xuất</a>
     
+    <div id="mqttStatus" class="mqtt-status">🔌 Connecting...</div>
+
     {% if role == 'VIEWER' %}
         <div style="text-align:center; font-size:0.8rem; color:#d63031; margin-bottom:10px; font-weight:bold; background:#ffebeb; padding:5px; border-radius:8px;">
            👁️ Chế độ Khách: Bạn chỉ có quyền Xem
@@ -177,9 +180,20 @@
 </div>
 
 <script>
+  // CẤU HÌNH MQTT - PHÙ HỢP VỚI ESP CODE
+  // Sử dụng WebSockets Secure (WSS) vì đây là trình duyệt
   const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
-  const PREFIX = "thaocute_smartgarden/";
-  const client = mqtt.connect(BROKER_URL);
+  const PREFIX = "thaocute_smartgarden/"; // Phải KHỚP 100% với biến PREFIX trong ESP
+  
+  const options = {
+      keepalive: 60,
+      clientId: 'WebClient_' + Math.random().toString(16).substr(2, 8),
+      clean: true,
+      reconnectPeriod: 1000,
+  };
+
+  console.log("Connecting to MQTT Broker: " + BROKER_URL);
+  const client = mqtt.connect(BROKER_URL, options);
   
   // Lấy vai trò từ Server (Backend Template Render)
   const USER_ROLE = "{{ role }}"; 
@@ -192,10 +206,36 @@
   let currentRegion = 'NORTH';
   let rawHistoryData = [];
 
-  client.on('connect', () => { console.log("MQTT Connected"); client.subscribe(PREFIX + 'update'); });
-  client.on('message', (topic, msg) => { if (topic === PREFIX + 'update') { updateUI(JSON.parse(msg.toString())); } });
+  // --- XỬ LÝ KẾT NỐI MQTT ---
+  const statusEl = document.getElementById('mqttStatus');
+
+  client.on('connect', () => { 
+      console.log("✅ MQTT Connected"); 
+      statusEl.innerText = "🟢 System Online";
+      statusEl.className = "mqtt-status status-ok";
+      // Dashboard chỉ cần subscribe topic update từ tc.py
+      client.subscribe(PREFIX + 'update'); 
+  });
+
+  client.on('offline', () => {
+      console.log("❌ MQTT Offline");
+      statusEl.innerText = "🔴 System Offline";
+      statusEl.className = "mqtt-status status-bad";
+  });
+
+  client.on('message', (topic, msg) => { 
+      if (topic === PREFIX + 'update') { 
+          try {
+              updateUI(JSON.parse(msg.toString())); 
+          } catch(e) {
+              console.error("Lỗi parse JSON từ tc.py:", e);
+          }
+      } 
+  });
 
   function updateUI(d) {
+      if (!d) return; // Bảo vệ chống dữ liệu null
+
       currentRegion = d.region; 
       
       document.getElementById('screenRegion').style.display = (d.step === 0) ? 'flex' : 'none';
@@ -228,37 +268,34 @@
           const btnOff = document.getElementById('btnOff');
           
           if (USER_ROLE === 'VIEWER') {
-              // Nếu là Khách: Khóa nút, thêm class xám màu
-              btnOn.disabled = true;
-              btnOff.disabled = true;
-              btnOn.classList.add('btn-disabled');
-              btnOff.classList.add('btn-disabled');
+              btnOn.disabled = true; btnOff.disabled = true;
+              btnOn.classList.add('btn-disabled'); btnOff.classList.add('btn-disabled');
           } else {
-              // Nếu là Admin/User: Mở nút
-              btnOn.disabled = false;
-              btnOff.disabled = false;
-              btnOn.classList.remove('btn-disabled');
-              btnOff.classList.remove('btn-disabled');
+              btnOn.disabled = false; btnOff.disabled = false;
+              btnOn.classList.remove('btn-disabled'); btnOff.classList.remove('btn-disabled');
           }
       }
       
       // Hiển thị trạng thái khẩn cấp (đất khô)
       const box = document.getElementById('soilBox');
-      if(d.soil < 26) { box.classList.add('emergency'); box.style.borderColor='red'; }
+      // Ép kiểu về int để so sánh chính xác
+      if(parseInt(d.soil) < 26) { box.classList.add('emergency'); box.style.borderColor='red'; }
       else { box.classList.remove('emergency'); box.style.borderColor='#dfe6e9'; }
       
-      // Hiển thị trạng thái bơm
+      // Hiển thị trạng thái bơm (dữ liệu này tc.py lấy từ việc gửi lệnh xuống ESP)
       const pst = document.getElementById('pumpSt');
       if(d.pump) { pst.innerText = "ĐANG BƠM..."; pst.style.color="#00b894"; }
       else { pst.innerText = "MÁY BƠM TẮT"; pst.style.color="#636e72"; }
   }
 
   function emit(ev, d) { 
-      // Chốt chặn cuối cùng: Nếu là Viewer mà cố tình gọi lệnh bơm thì chặn lại
+      // Chốt chặn quyền Viewer
       if(USER_ROLE === 'VIEWER' && ev === 'user_control') {
           alert("🚫 BẠN ĐANG Ở CHẾ ĐỘ KHÁCH\n\nBạn không có quyền Bật/Tắt máy bơm.");
           return; 
       }
+      // Gửi sự kiện lên tc.py qua topic /events
+      // tc.py sẽ nhận, xử lý và gửi lệnh ON/OFF xuống ESP qua topic /cmd
       client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: d})); 
   }
 
