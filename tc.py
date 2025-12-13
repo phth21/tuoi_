@@ -19,7 +19,7 @@ USERS = {
 # CONFIG BACKEND
 GEMINI_API_KEY = os.getenv("GEMINI_KEY", "AIzaSyDnmQNHRgXXPgl-ZhK-Et8EiAW9MjTh-5s").strip()
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
-MONGO_URI = os.getenv("MONGO_URI") # Lấy từ Environment Variable trên Render
+MONGO_URI = os.getenv("MONGO_URI")
 
 # MONGODB CONNECT
 db_collection = None
@@ -36,7 +36,7 @@ except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 # AI CONNECT
 genai.configure(api_key=GEMINI_API_KEY)
 try:
-    model = genai.GenerativeModel('gemini-1.5-flash') # Dùng 1.5 Flash ổn định hơn
+    model = genai.GenerativeModel('gemini-1.5-flash')
     print("--- AI GEMINI READY ---")
 except Exception as e:
     model = None
@@ -58,7 +58,7 @@ PREFIX = "thaocute_smartgarden/"
 state = {
     'step': 0, 'region': 'NORTH', 'mode': 'NONE', 'location': "Chưa định vị", 
     'lat': None, 'lon': None, 'soil': 0, 'temp': 25.0, 'humidity': 80, 'rain': 0.0,
-    'ai_timing': "...", 'ai_target': "...", 'ai_reason': "...", # Thêm ai_target
+    'ai_timing': "...", 'ai_target': "...", 'ai_reason': "...",
     'pump': False, 'warning': "", 'last_ai_call': 0
 }
 mqtt_client = mqtt.Client()
@@ -90,7 +90,6 @@ def logout():
 def get_history():
     date_str = request.args.get('date')
     if db_collection is None: return jsonify([])
-    # Lấy dữ liệu MongoDB, bỏ trường _id để tránh lỗi JSON
     logs = list(db_collection.find({"date": date_str}, {'_id': 0}).sort("created_at", -1))
     return jsonify(logs)
 
@@ -115,20 +114,8 @@ def broadcast():
     try: mqtt_client.publish(PREFIX + "update", json.dumps(state, ensure_ascii=False))
     except: pass
 
-# --- TÍNH NĂNG MỚI: TỰ ĐỘNG ĐỊNH VỊ IP ---
-def auto_locate_ip():
-    try:
-        r = requests.get('http://ip-api.com/json/', timeout=5).json()
-        if r['status'] == 'success':
-            state['lat'], state['lon'] = r['lat'], r['lon']
-            state['location'] = f"{r.get('city')} (IP Auto)"
-            # Có tọa độ -> Gọi ngay hàm lấy thời tiết
-            update_weather()
-    except:
-        state['location'] = "Lỗi định vị (Chọn thủ công)"
-    broadcast()
-
 def update_weather():
+    """Gọi API OpenWeatherMap"""
     if not state['lat']: return
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?lat={state['lat']}&lon={state['lon']}&units=metric&appid={OPENWEATHER_KEY}"
@@ -137,10 +124,10 @@ def update_weather():
             state['temp'] = r['main']['temp']; state['humidity'] = r['main']['humidity']
             state['rain'] = r.get('rain', {}).get('1h', 0.0)
             
-            if "(Thủ công)" not in state['location'] and "(IP)" not in state['location']: 
-                state['location'] = f"{r.get('name')} (Weather)"
+            # Chỉ cập nhật tên địa điểm nếu chưa có tên custom
+            if "Thủ công" not in state['location'] and "Vị trí thực tế" not in state['location']: 
+                state['location'] = r.get('name')
             
-            # Nếu đang AUTO -> Gọi AI tính toán lại
             if state['mode'] == 'AUTO': 
                 threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
     except: pass
@@ -151,7 +138,6 @@ def ask_gemini(force=False):
     now = time.time()
     is_emergency = state['soil'] < CRITICAL_LEVEL
     
-    # Cooldown Logic (Tránh spam API)
     if not force:
         if is_emergency and (now - state['last_ai_call'] < 15): return
         if not is_emergency and (now - state['last_ai_call'] < 120): return
@@ -159,7 +145,6 @@ def ask_gemini(force=False):
     state['warning'] = "KHẨN CẤP: ĐẤT QUÁ KHÔ!" if is_emergency else ("CẢNH BÁO: NGẬP!" if state['soil'] >= FLOOD_LEVEL else "")
     broadcast()
 
-    # Prompt đầy đủ (Có Target)
     prompt = f"""
     Đóng vai kỹ sư nông nghiệp.
     Đất: {state['soil']}%. Nhiệt: {state['temp']}C. Mưa: {state['rain']}mm.
@@ -174,7 +159,7 @@ def ask_gemini(force=False):
             data = json.loads(match.group())
             dec = data.get('decision', 'OFF').upper()
             state['ai_timing'] = data.get('timing', '...')
-            state['ai_target'] = data.get('target', '...') # Lưu target để dùng ngắt bơm
+            state['ai_target'] = data.get('target', '...')
             state['ai_reason'] = data.get('reason', '...')
             state['last_ai_call'] = now 
             
@@ -184,12 +169,11 @@ def ask_gemini(force=False):
     broadcast()
 
 def control_pump(on, source="System"):
-    # Safety Check: Ngập úng thì cấm bơm
     if on and state['soil'] >= FLOOD_LEVEL:
         on = False
         state['warning'] = "NGẬP ÚNG! TỪ CHỐI BƠM"
 
-    if state['step'] != 2 and on: on = False # Chỉ bơm khi đã Start
+    if state['step'] != 2 and on: on = False 
     
     if state['pump'] != on:
         state['pump'] = on
@@ -198,7 +182,6 @@ def control_pump(on, source="System"):
         log_event(f"PUMP_{cmd}", source)
         print(f"💦 PUMP {cmd} ({source})")
     
-    # Reset warning nếu đã tắt bơm
     if not on and state['warning'] == "NGẬP ÚNG! TỪ CHỐI BƠM": state['warning'] = ""
     broadcast()
 
@@ -212,25 +195,19 @@ def on_message(client, userdata, msg):
                 val = int(payload.split("H:")[1].split()[0])
                 state['soil'] = max(0, min(100, val))
                 
-                # A. Ngắt khẩn cấp nếu ngập
                 if state['soil'] >= FLOOD_LEVEL and state['pump']:
                     control_pump(False, "Safety Cutoff")
                 
-                # B. Logic AUTO
                 elif state['mode'] == 'AUTO':
-                    # Đất quá khô -> Gọi AI
                     if state['soil'] < CRITICAL_LEVEL: 
                         threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
                     
-                    # Đang bơm -> Kiểm tra xem đã đạt Target của AI chưa
                     if state['pump']:
                         nums = re.findall(r'\d+', str(state['ai_target']))
                         if nums:
                             target_val = int(nums[0])
-                            # Cộng bù 3% để trừ hao
                             if state['soil'] >= (target_val + 3):
                                 control_pump(False, "AI Target Reached")
-
                 broadcast()
             except: pass
 
@@ -241,8 +218,7 @@ def on_message(client, userdata, msg):
             if evt == 'select_region':
                 state['region'] = data['region']
                 state['step'] = 1
-                # Kích hoạt tự tìm vị trí ngay khi chọn vùng
-                threading.Thread(target=auto_locate_ip, daemon=True).start()
+                # ĐÃ XÓA auto_locate_ip Ở ĐÂY ĐỂ TRÁNH NHẢY SANG MỸ
                 
             elif evt == 'enter_mode':
                 state['mode'] = data['mode']; state['step'] = 2
@@ -251,14 +227,23 @@ def on_message(client, userdata, msg):
                 
             elif evt == 'exit_dashboard':
                 state['step'] = 1; state['mode'] = 'NONE'; control_pump(False)
-                
+            
+            # --- XỬ LÝ CHỌN THÀNH PHỐ THỦ CÔNG ---
             elif evt == 'set_city':
                 city = data.get('city')
                 if city in ALL_CITIES:
                     state['lat'], state['lon'] = ALL_CITIES[city]
                     state['location'] = f"{city} (Thủ công)"
                     threading.Thread(target=update_weather, daemon=True).start()
-                    
+
+            # --- [MỚI] XỬ LÝ GPS THỰC TẾ TỪ WEB GỬI LÊN ---
+            elif evt == 'set_gps':
+                state['lat'] = data['lat']
+                state['lon'] = data['lon']
+                state['location'] = "📍 Vị trí thực tế"
+                print(f"🌍 Nhận GPS: {state['lat']}, {state['lon']}")
+                threading.Thread(target=update_weather, daemon=True).start()
+            
             elif evt == 'user_control' and state['mode'] == 'MANUAL':
                 control_pump(bool(data['pump']), "Người dùng bấm")
             broadcast()
@@ -270,9 +255,7 @@ def run_mqtt():
     try: mqtt_client.connect(BROKER, 1883, 60); mqtt_client.loop_forever()
     except: print("Lỗi MQTT")
 
-# Chạy MQTT Thread
 threading.Thread(target=run_mqtt, daemon=True).start()
 
 if __name__ == '__main__':
-    # Chạy Flask
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
