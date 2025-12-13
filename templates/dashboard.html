@@ -2,245 +2,346 @@
 <html lang="vi">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Smart Garden Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Smart Garden Pro</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        :root { --primary: #2ecc71; --danger: #e74c3c; --dark: #2c3e50; --light: #ecf0f1; }
-        body { margin:0; font-family:'Roboto',sans-serif; background:#f0f2f5; min-height:100vh; color:#333; display:flex; justify-content:center; }
-        .screen { position:fixed; top:0; left:0; width:100%; height:100%; background:#fff; z-index:100; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+        :root { --primary: #2ecc71; --danger: #e74c3c; --ai: #8e44ad; --dark: #34495e; --bg: #f0f2f5; }
+        body { margin:0; font-family:'Be Vietnam Pro', sans-serif; background:var(--bg); min-height:100vh; display:flex; justify-content:center; color: #333; }
+        
+        /* MÀN HÌNH SETUP */
+        .screen { position:fixed; top:0; left:0; width:100%; height:100%; background:#fff; z-index:100; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:20px; box-sizing:border-box; }
+        
+        /* MAIN APP */
         #mainApp { display:none; width:100%; max-width:480px; padding:15px; box-sizing:border-box; }
-        .card { background:white; border-radius:16px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.1); margin-bottom:15px; }
-        .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; font-size:14px; }
-        .btn-simple { background:#e4e6eb; border:none; padding:8px 14px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px; }
-        .btn-simple:hover { background:#d8dadf; }
-        .viewer-badge { background:#f39c12; color:white; padding:5px 10px; border-radius:20px; font-size:12px; font-weight:bold; }
-        .location-row { font-size:16px; font-weight:600; margin-bottom:15px; text-align:center; }
-        .location-btns { display:flex; gap:8px; justify-content:center; margin-top:8px; }
-        .soil-circle { width:160px; height:160px; margin:20px auto; border-radius:50%; border:14px solid #e4e6eb; background:white; display:flex; flex-direction:column; justify-content:center; align-items:center; transition:0.3s; }
-        .soil-value { font-size:44px; font-weight:700; color:var(--primary); }
-        .soil-label { font-size:13px; color:#777; }
-        .emergency { border-color:var(--danger)!important; }
-        .pump-status { text-align:center; font-size:16px; font-weight:600; margin:10px 0; }
-        .warning { text-align:center; color:var(--danger); font-weight:bold; min-height:20px; font-size:14px; }
-        .sensor-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:20px 0; }
-        .sensor-item { background:#f8f9fa; padding:14px; border-radius:12px; text-align:center; }
-        .sensor-val { font-size:18px; font-weight:700; color:#333; }
-        .sensor-name { font-size:12px; color:#666; margin-top:4px; display:block; }
-        .control-area { margin:20px 0; position:relative; }
-        .viewer-disabled { opacity:0.5; pointer-events:none; }
-        .viewer-overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:transparent; }
-        .btn-pump { width:100%; padding:16px; border:none; border-radius:12px; font-size:16px; font-weight:bold; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; margin:8px 0; }
+        .card { background:white; border-radius:20px; padding:20px; box-shadow:0 8px 20px rgba(0,0,0,0.05); }
+        
+        /* HEADER */
+        .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+        .btn-mini { background:#edf2f7; border:none; padding:8px 12px; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer; color:#555; text-decoration:none; }
+        
+        /* LOCATION */
+        .loc-box { display:flex; justify-content:center; align-items:center; gap:8px; margin-bottom:5px; }
+        .loc-text { font-size:16px; font-weight:700; color:var(--dark); }
+        .btn-edit-loc { background:none; border:none; color:#3498db; cursor:pointer; font-size:14px; text-decoration:underline; padding:0; }
+
+        /* VÒNG TRÒN ĐẤT */
+        .soil-wrapper { display:flex; justify-content:center; margin:15px 0; }
+        .soil-circle { width:140px; height:140px; border-radius:50%; border:10px solid #eee; display:flex; flex-direction:column; justify-content:center; align-items:center; transition:0.3s; }
+        .soil-val { font-size:42px; font-weight:800; color:var(--primary); line-height:1; }
+        .soil-lbl { font-size:11px; color:#999; font-weight:600; margin-top:5px; }
+        
+        /* SENSORS */
+        .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:15px 0; }
+        .sensor-box { background:#f8f9fa; padding:10px; border-radius:12px; text-align:center; }
+        .s-val { font-size:16px; font-weight:700; color:var(--dark); }
+        .s-lbl { font-size:10px; color:#7f8c8d; display:block; text-transform:uppercase; margin-top:3px; }
+
+        /* --- PHÂN BIỆT AUTO VS MANUAL --- */
+        .control-area { margin-top:20px; min-height: 80px; }
+        
+        /* Giao diện Manual: Nút to */
+        .manual-ui button { width:100%; padding:15px; border-radius:12px; border:none; font-weight:bold; color:white; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
         .btn-on { background:var(--primary); }
         .btn-off { background:var(--danger); }
-        .history-btn { width:100%; padding:12px; background:#3498db; color:white; border:none; border-radius:12px; font-weight:600; cursor:pointer; }
-        .popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:200; justify-content:center; align-items:center; }
-        .popup-inner { background:white; width:90%; max-width:500px; border-radius:16px; padding:20px; max-height:85vh; overflow-y:auto; }
-        .stats { text-align:center; margin:15px 0; font-size:14px; color:#555; }
+
+        /* Giao diện Auto: Bảng thông tin (Không nút) */
+        .auto-ui { background:#f3e5f5; border:1px solid #e1bee7; border-radius:12px; padding:15px; text-align:left; position:relative; }
+        .auto-badge { position:absolute; top:-10px; right:10px; background:var(--ai); color:white; font-size:10px; padding:4px 8px; border-radius:10px; font-weight:bold; }
+        .ai-text { font-size:14px; color:#4a148c; margin-bottom:5px; font-weight:600; }
+        .ai-reason { font-size:13px; font-style:italic; color:#6a1b9a; }
+
+        /* KHÁCH (VIEWER) */
+        .viewer-disabled { opacity:0.6; pointer-events:none; filter:grayscale(80%); position:relative; }
+        .viewer-tag { position:absolute; top:-12px; left:50%; transform:translateX(-50%); background:#f1c40f; color:white; font-size:10px; padding:4px 12px; border-radius:20px; font-weight:bold; z-index:10; white-space:nowrap; }
+
+        /* POPUP LỊCH SỬ & LIST */
+        .popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:200; align-items:center; justify-content:center; }
+        .popup-box { background:white; width:90%; max-width:450px; border-radius:16px; padding:20px; max-height:85vh; display:flex; flex-direction:column; }
+        
+        /* History Controls */
+        .hist-controls { display:flex; gap:10px; margin-bottom:10px; }
+        .hist-controls select, .hist-controls input { padding:8px; border:1px solid #ddd; border-radius:8px; font-size:13px; }
+        .total-counter { background:#e3f2fd; color:#1565c0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; margin-bottom:10px; font-size:14px; }
+
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { text-align:left; color:#888; padding:8px; border-bottom:1px solid #eee; }
+        td { padding:8px; border-bottom:1px solid #f5f5f5; }
+
+        /* Button Setup */
+        .btn-setup { width:100%; padding:15px; margin:5px 0; border:1px solid #eee; background:white; border-radius:12px; text-align:left; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:10px; }
+        .btn-setup:hover { background:#f9f9f9; }
     </style>
 </head>
 <body>
 
 {% if role != 'VIEWER' %}
-<div id="screenRegion" class="screen"> 
-    <h2>Chọn Khu Vực</h2>
-    <button class="btn-simple" style="padding:15px 30px; font-size:16px; margin:10px;" onclick="emit('select_region',{region:'NORTH'})">Miền Bắc</button>
-    <button class="btn-simple" style="padding:15px 30px; font-size:16px; margin:10px; background:#3498db" onclick="emit('select_region',{region:'CENTRAL'})">Miền Trung</button>
-    <button class="btn-simple" style="padding:15px 30px; font-size:16px; margin:10px; background:#e67e22" onclick="emit('select_region',{region:'SOUTH'})">Miền Nam</button>
+<div id="screenRegion" class="screen">
+    <h3>📍 Không tìm thấy vị trí</h3>
+    <p style="color:#777; font-size:13px; margin-top:-10px">Vui lòng chọn thủ công</p>
+    <button class="btn-setup" onclick="emit('select_region',{region:'NORTH'})"><span>🏯</span> Miền Bắc</button>
+    <button class="btn-setup" onclick="emit('select_region',{region:'CENTRAL'})"><span>🏖️</span> Miền Trung</button>
+    <button class="btn-setup" onclick="emit('select_region',{region:'SOUTH'})"><span>🌴</span> Miền Nam</button>
 </div>
+
 <div id="screenMode" class="screen" style="display:none">
-    <h2>Chọn Chế Độ</h2>
-    <button class="btn-simple" style="padding:20px 40px; font-size:18px; margin:15px; background:var(--primary)" onclick="emit('enter_mode',{mode:'AUTO'})">🤖 TỰ ĐỘNG</button>
-    <button class="btn-simple" style="padding:20px 40px; font-size:18px; margin:15px; background:#95a5a6" onclick="emit('enter_mode',{mode:'MANUAL'})">🎮 THỦ CÔNG</button>
+    <h3>⚙️ Chọn Chế Độ Vận Hành</h3>
+    <button class="btn-setup" style="border:2px solid var(--ai)" onclick="emit('enter_mode',{mode:'AUTO'})">
+        <span style="font-size:24px">🤖</span> 
+        <div><div>Tự Động (AI)</div><div style="font-size:11px;color:#888;font-weight:400">Gemini tự quyết định bơm</div></div>
+    </button>
+    <button class="btn-setup" style="border:2px solid #95a5a6" onclick="emit('enter_mode',{mode:'MANUAL'})">
+        <span style="font-size:24px">🎮</span>
+        <div><div>Thủ Công</div><div style="font-size:11px;color:#888;font-weight:400">Bạn tự bật tắt bơm</div></div>
+    </button>
 </div>
 {% endif %}
 
 <div id="mainApp">
     <div class="card">
         <div class="header">
-            <div id="mqttStatus" style="width:10px;height:10px;border-radius:50%;background:#ccc;"></div>
+            <div style="display:flex; align-items:center; gap:6px; font-weight:bold; font-size:14px">
+                <div id="mqttStatus" style="width:10px;height:10px;border-radius:50%;background:#ccc"></div> Smart Garden
+            </div>
             <div>
-                {% if role == 'VIEWER' %}
-                    <span class="viewer-badge">👁️ KHÁCH XEM</span>
-                {% else %}
-                    <button class="btn-simple" onclick="exit()">Menu</button>
+                {% if role != 'VIEWER' %}
+                    <button class="btn-mini" onclick="exit()">Menu Mode</button>
                 {% endif %}
-                <a href="/logout" class="btn-simple" style="color:red; margin-left:5px">Thoát</a>
+                <a href="/logout" class="btn-mini" style="color:red; margin-left:5px">Thoát</a>
             </div>
         </div>
 
-        <div class="location-row">
-            📍 <span id="loc">Đang định vị...</span>
+        <div class="loc-box">
+            <span class="loc-text">📍 <span id="loc">Đang tải...</span></span>
             {% if role != 'VIEWER' %}
-            <div class="location-btns">
-                <button class="btn-simple" onclick="getRealGPS()">🎯 GPS</button>
-                <button class="btn-simple" id="cityListBtn" onclick="openCityPopup()" style="display:none">List</button>
-            </div>
+                <button class="btn-edit-loc" onclick="openCityPopup()">Sửa</button>
             {% endif %}
         </div>
+        <div style="text-align:center; font-size:11px; color:#999; text-transform:uppercase" id="modeLabel">--</div>
 
-        <div class="soil-circle" id="soilBox">
-            <div class="soil-value" id="soil">--</div>
-            <div class="soil-label">% ĐỘ ẨM ĐẤT</div>
+        <div class="soil-wrapper">
+            <div class="soil-circle" id="soilBox">
+                <span class="soil-val" id="soil">--</span>
+                <span class="soil-lbl">% ĐỘ ẨM</span>
+            </div>
         </div>
-        <div class="warning" id="warn"></div>
-        <div class="pump-status" id="pumpSt">TRẠNG THÁI: TẮT</div>
+        <div style="text-align:center; font-weight:bold; font-size:14px; color:#555" id="pumpSt">--</div>
+        <div style="text-align:center; font-size:13px; color:red; height:18px; font-weight:bold" id="warn"></div>
 
-        <div class="sensor-grid">
-            <div class="sensor-item"><span class="sensor-val" id="temp">--°</span><span class="sensor-name">Nhiệt độ</span></div>
-            <div class="sensor-item"><span class="sensor-val" id="hum">--%</span><span class="sensor-name">Độ ẩm KK</span></div>
-            <div class="sensor-item"><span class="sensor-val" id="rain">--</span><span class="sensor-name">Mưa (mm/h)</span></div>
-        </div>
-
-        <div class="control-area {% if role == 'VIEWER' %}viewer-disabled{% endif %}">
-            {% if role == 'VIEWER' %}<div class="viewer-overlay"></div>{% endif %}
-            <button class="btn-pump btn-on" onclick="pump(true)">💧 BẬT BƠM</button>
-            <button class="btn-pump btn-off" onclick="pump(false)">⛔ TẮT BƠM</button>
+        <div class="grid-3">
+            <div class="sensor-box"><span class="s-val" id="temp">--°</span><span class="s-lbl">Nhiệt độ</span></div>
+            <div class="sensor-box"><span class="s-val" id="hum">--%</span><span class="s-lbl">Không khí</span></div>
+            <div class="sensor-box"><span class="s-val" id="rain">--</span><span class="s-lbl">Mưa</span></div>
         </div>
 
-        <button class="history-btn" onclick="openHistory()">📅 Xem Lịch Sử</button>
-        <div class="stats" id="pumpCountToday">Tổng lần bơm hôm nay: 0</div>
+        <div class="control-area">
+            
+            <div id="panelAuto" class="auto-ui" style="display:none">
+                <div class="auto-badge">AI RUNNING</div>
+                <div class="ai-text">🤖 Gemini đang giám sát</div>
+                <div class="ai-reason">"<span id="aiReason">Hệ thống đang phân tích môi trường...</span>"</div>
+                <div style="margin-top:5px; font-size:12px; color:#444">Kế hoạch: <span id="aiTime" style="font-weight:bold">...</span></div>
+            </div>
+
+            <div id="panelManual" class="manual-ui" style="display:none">
+                {% if role == 'VIEWER' %}
+                    <div class="viewer-disabled">
+                        <div class="viewer-tag">CHẾ ĐỘ KHÁCH (CHỈ XEM)</div>
+                        <button class="btn-on">BẬT BƠM TƯỚI</button>
+                    </div>
+                {% else %}
+                    <button id="btnOn" class="btn-on" onclick="pump(true)">💧 BẬT MÁY BƠM</button>
+                    <button id="btnOff" class="btn-off" onclick="pump(false)" style="display:none">⛔ TẮT MÁY BƠM</button>
+                {% endif %}
+            </div>
+        </div>
+
+        <button class="btn-mini" style="width:100%; margin-top:20px; padding:12px; background:#e8f0fe; color:#1967d2" onclick="openHistory()">
+            📅 Xem Lịch Sử & Thống Kê
+        </button>
     </div>
 </div>
 
-{% if role != 'VIEWER' %}
 <div id="cityPopup" class="popup" onclick="if(event.target==this) this.style.display='none'">
-    <div class="popup-inner">
-        <h3>Chọn Thành Phố</h3>
-        <div id="cityList" style="display:grid; gap:8px;"></div>
-        <button class="btn-simple" style="width:100%; margin-top:15px" onclick="document.getElementById('cityPopup').style.display='none'">Đóng</button>
+    <div class="popup-box">
+        <h3>Chọn Vị Trí Thay Thế</h3>
+        <p style="font-size:12px; color:#666; margin-top:-10px">Do GPS không chính xác hoặc bạn muốn đổi vùng.</p>
+        <div id="cityList" style="display:grid; gap:8px; overflow-y:auto; max-height:300px"></div>
+        <button class="btn-mini" style="width:100%; margin-top:15px; background:#ddd" onclick="document.getElementById('cityPopup').style.display='none'">Đóng</button>
     </div>
 </div>
-{% endif %}
 
 <div id="historyPopup" class="popup" onclick="if(event.target==this) this.style.display='none'">
-    <div class="popup-inner">
-        <div style="display:flex; justify-content:space-between; margin-bottom:15px; align-items:center">
-            <h3>Nhật Ký Hoạt Động</h3>
-            <input type="date" id="dateInput" onchange="loadHistory()" style="padding:6px; border-radius:6px; border:1px solid #ddd">
+    <div class="popup-box" style="height:80vh">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Nhật Ký</h3>
+            <button onclick="document.getElementById('historyPopup').style.display='none'" style="border:none; background:none; font-size:20px">&times;</button>
         </div>
-        <div style="overflow-x:auto; max-height:60vh">
-            <table style="width:100%; border-collapse:collapse; font-size:14px">
-                <thead style="background:#f8f9fa"><tr><th style="text-align:left;padding:8px">Giờ</th><th style="text-align:left;padding:8px">Hành động</th><th style="text-align:left;padding:8px">Chi tiết</th></tr></thead>
+
+        <div class="total-counter" id="pumpCountText">Tổng số lần bơm hôm nay: 0</div>
+
+        <div class="hist-controls">
+            <input type="date" id="dateInput" onchange="loadHistory()" style="flex:1">
+            <select id="filterType" onchange="renderHistoryTable()" style="flex:1">
+                <option value="ALL">Tất cả</option>
+                <option value="AI">🤖 AI Dự báo</option>
+                <option value="PUMP">💧 Hoạt động Bơm</option>
+            </select>
+        </div>
+
+        <div style="overflow-y:auto; flex:1">
+            <table>
+                <thead><tr><th>Giờ</th><th>Loại</th><th>Chi tiết</th></tr></thead>
                 <tbody id="histBody"></tbody>
             </table>
         </div>
-        <button class="btn-simple" style="width:100%; margin-top:15px" onclick="document.getElementById('historyPopup').style.display='none'">Đóng</button>
     </div>
 </div>
 
 <script>
-    const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
+    const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
     const PREFIX = "thaocute_smartgarden/";
-    const USER_ROLE = "{{ role }}";
-    const client = mqtt.connect(BROKER_URL, { keepalive: 60, clientId: 'web_'+Math.random().toString(16).substr(2,8) });
+    const ROLE = "{{ role }}";
+    const client = mqtt.connect(BROKER, { keepalive: 60, clientId: 'web_'+Math.random().toString(16).substr(2,8) });
+    
+    // Config
     const CITIES = { 'NORTH': ["Hà Nội","Hải Phòng","Lào Cai"], 'CENTRAL': ["Đà Nẵng","Huế","Nha Trang"], 'SOUTH': ["TP.HCM","Cần Thơ","Cà Mau"] };
     let currentRegion = 'NORTH';
-    let todayPumpCount = 0;
+    let rawHistoryData = []; // Lưu dữ liệu thô để lọc
 
+    // --- HIỂN THỊ MÀN HÌNH ---
     function checkDisplay(step) {
-        if (USER_ROLE === 'VIEWER') {
-            document.getElementById('mainApp').style.display = 'block';
-            return;
-        }
-        document.getElementById('screenRegion').style.display = (step === 0) ? 'flex' : 'none';
-        document.getElementById('screenMode').style.display = (step === 1) ? 'flex' : 'none';
-        document.getElementById('mainApp').style.display = (step === 2) ? 'block' : 'none';
+        if (ROLE === 'VIEWER') { document.getElementById('mainApp').style.display='block'; return; }
+        ['screenRegion','screenMode','mainApp'].forEach(id => document.getElementById(id).style.display='none');
+        if(step===0) document.getElementById('screenRegion').style.display='flex';
+        else if(step===1) document.getElementById('screenMode').style.display='flex';
+        else if(step===2) document.getElementById('mainApp').style.display='block';
     }
     checkDisplay(0);
 
+    // --- MQTT & UPDATE ---
     client.on('connect', () => {
         document.getElementById('mqttStatus').style.background = '#2ecc71';
         client.subscribe(PREFIX + 'update');
-        if (USER_ROLE !== 'VIEWER' && navigator.geolocation) {
-            setTimeout(() => getRealGPS(), 1000); // Tự động GPS khi load
-        }
+        // Admin: Vào cái là tìm GPS luôn
+        if (ROLE !== 'VIEWER') setTimeout(getRealGPS, 1000);
     });
 
-    client.on('message', (topic, msg) => {
-        if (topic === PREFIX + 'update') updateUI(JSON.parse(msg.toString()));
-    });
+    client.on('message', (t, m) => updateUI(JSON.parse(m.toString())));
 
     function updateUI(d) {
         if (!d) return;
-        currentRegion = d.region;
+        currentRegion = d.region || 'NORTH';
         checkDisplay(d.step);
 
-        document.getElementById('loc').innerText = d.location || "Chưa xác định";
+        document.getElementById('loc').innerText = d.location || "Chưa rõ";
         document.getElementById('soil').innerText = d.soil;
         document.getElementById('temp').innerText = d.temp + "°";
         document.getElementById('hum').innerText = d.humidity + "%";
         document.getElementById('rain').innerText = d.rain || "0";
         document.getElementById('warn').innerText = d.warning;
+        
+        // Màu vòng tròn
+        document.getElementById('soilBox').style.borderColor = (d.soil < 30) ? "#e74c3c" : "#2ecc71";
 
-        const soilBox = document.getElementById('soilBox');
-        soilBox.classList.toggle('emergency', parseInt(d.soil) < 26);
-
-        const pumpSt = document.getElementById('pumpSt');
+        // Trạng thái Bơm
+        const pSt = document.getElementById('pumpSt');
         if (d.pump) {
-            pumpSt.innerText = "💦 ĐANG BƠM NƯỚC";
-            pumpSt.style.color = "#2980b9";
+            pSt.innerText = "ĐANG BƠM NƯỚC..."; pSt.style.color = "#2980b9";
+            document.getElementById('btnOn').style.display='none'; document.getElementById('btnOff').style.display='flex';
         } else {
-            pumpSt.innerText = "MÁY BƠM TẮT";
-            pumpSt.style.color = "#7f8c8d";
+            pSt.innerText = "MÁY BƠM ĐANG TẮT"; pSt.style.color = "#555";
+            document.getElementById('btnOn').style.display='flex'; document.getElementById('btnOff').style.display='none';
         }
 
-        // Khách không thấy AI → luôn hiện panel Manual (đã disable)
+        // --- XỬ LÝ KHÁC BIỆT AUTO / MANUAL ---
+        // Mode Label Header
+        document.getElementById('modeLabel').innerText = (d.mode === 'AUTO') ? "MODE: TỰ ĐỘNG (AI)" : "MODE: THỦ CÔNG";
+
+        const pAuto = document.getElementById('panelAuto');
+        const pManual = document.getElementById('panelManual');
+
+        if (ROLE === 'VIEWER') {
+            // Khách luôn thấy Manual (bị mờ)
+            pAuto.style.display = 'none';
+            pManual.style.display = 'block';
+        } else {
+            if (d.mode === 'AUTO') {
+                // Auto: Hiện bảng AI, Ẩn hoàn toàn bảng nút bấm
+                pAuto.style.display = 'block';
+                pManual.style.display = 'none';
+                document.getElementById('aiReason').innerText = d.ai_reason || "Hệ thống ổn định";
+                document.getElementById('aiTime').innerText = d.ai_timing || "...";
+            } else {
+                // Manual: Hiện nút bấm, Ẩn bảng AI
+                pAuto.style.display = 'none';
+                pManual.style.display = 'block';
+            }
+        }
     }
 
-    function emit(ev, data) {
-        if (USER_ROLE === 'VIEWER') return;
-        client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: data || {}}));
-    }
+    function emit(ev, data) { if (ROLE === 'VIEWER') return; client.publish(PREFIX + 'events', JSON.stringify({event: ev, data: data || {}})); }
     function pump(st) { emit('user_control', {pump: st}); }
-    function exit() { if(confirm("Về menu?")) emit('exit_dashboard', {}); }
+    function exit() { if(confirm("Về menu chọn chế độ?")) emit('exit_dashboard', {}); }
 
+    // --- GPS & LOCATION FALLBACK ---
     function getRealGPS() {
-        if (USER_ROLE === 'VIEWER') return;
-        document.getElementById('loc').innerText = "Đang định vị GPS...";
-        if (!navigator.geolocation) return fallbackIP();
-        
+        if (ROLE === 'VIEWER') return;
+        document.getElementById('loc').innerText = "Đang quét GPS...";
+        if (!navigator.geolocation) { fallbackIP(); return; }
+
         navigator.geolocation.getCurrentPosition(
-            p => {
-                emit('set_gps', {lat: p.coords.latitude, lon: p.coords.longitude});
-                document.getElementById('cityListBtn').style.display = 'none';
-            },
-            err => {
-                console.log("GPS fail → dùng IP");
-                fallbackIP();
-            },
-            { timeout: 8000 }
+            (p) => emit('set_gps', {lat: p.coords.latitude, lon: p.coords.longitude}),
+            () => { console.log("GPS Blocked"); fallbackIP(); },
+            { timeout: 7000 }
         );
     }
 
     function fallbackIP() {
-        document.getElementById('loc').innerText = "Dùng IP định vị...";
+        document.getElementById('loc').innerText = "Đang quét IP...";
         fetch('https://ipapi.co/json/')
             .then(r => r.json())
-            .then(data => {
-                if (data.latitude) {
-                    emit('set_gps', {lat: data.latitude, lon: data.longitude});
-                    document.getElementById('loc').innerText = `${data.city || 'Việt Nam'} (IP)`;
-                } else throw "";
+            .then(d => {
+                if(d.latitude) {
+                    emit('set_gps', {lat: d.latitude, lon: d.longitude});
+                    document.getElementById('loc').innerText = d.city + " (IP)";
+                } else throw "IP Error";
             })
             .catch(() => {
-                document.getElementById('loc').innerText = "Không định vị được";
-                document.getElementById('cityListBtn').style.display = 'block';
+                // FAIL CẢ GPS LẪN IP -> MỞ LUÔN DANH SÁCH CHỌN
+                document.getElementById('loc').innerText = "Lỗi vị trí!";
+                openCityPopup(); 
             });
     }
 
     function openCityPopup() {
+        if (ROLE === 'VIEWER') return;
         const list = document.getElementById('cityList'); list.innerHTML = "";
-        (CITIES[currentRegion] || []).forEach(c => {
-            let btn = document.createElement('button');
-            btn.className = "btn-simple"; btn.style.width = "100%"; btn.innerText = c;
-            btn.onclick = () => { emit('set_city', {city: c}); document.getElementById('cityPopup').style.display='none'; };
-            list.appendChild(btn);
+        
+        // Tạo danh sách tất cả các miền để người dùng dễ chọn lại
+        // Hoặc chỉ hiển thị miền hiện tại: const cities = CITIES[currentRegion] || [];
+        // Ở đây mình hiển thị gộp lại cho dễ tìm nếu user chọn sai miền từ đầu
+        const allCities = [...CITIES['NORTH'], ...CITIES['CENTRAL'], ...CITIES['SOUTH']];
+        
+        allCities.forEach(c => {
+            let b = document.createElement('button');
+            b.className = "btn-mini"; b.style.width="100%"; b.style.padding="12px"; b.style.marginBottom="5px"; 
+            b.style.textAlign="left"; b.style.background="#f8f9fa";
+            b.innerText = "📍 " + c;
+            b.onclick = () => { 
+                emit('set_city', {city: c}); 
+                document.getElementById('cityPopup').style.display='none'; 
+                // Cập nhật lại UI tạm thời
+                document.getElementById('loc').innerText = c;
+            };
+            list.appendChild(b);
         });
         document.getElementById('cityPopup').style.display = 'flex';
     }
 
+    // --- LỊCH SỬ NÂNG CAO ---
     function openHistory() {
         document.getElementById('historyPopup').style.display = 'flex';
         document.getElementById('dateInput').valueAsDate = new Date();
@@ -248,24 +349,61 @@
     }
 
     function loadHistory() {
-        const date = document.getElementById('dateInput').value;
-        fetch('/api/history?date=' + date)
+        const d = document.getElementById('dateInput').value;
+        const tbody = document.getElementById('histBody');
+        tbody.innerHTML = "<tr><td colspan='3' style='text-align:center'>Đang tải...</td></tr>";
+
+        fetch('/api/history?date=' + d)
             .then(r => r.json())
             .then(data => {
-                const tbody = document.getElementById('histBody'); tbody.innerHTML = "";
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Không có dữ liệu</td></tr>';
-                    document.getElementById('pumpCountToday').innerText = "Tổng lần bơm hôm nay: 0";
-                    return;
-                }
-                todayPumpCount = data.filter(i => i.action.includes("PUMP_ON") || i.detail.includes("BẬT")).length;
-                document.getElementById('pumpCountToday').innerText = `Tổng lần bơm hôm nay: ${todayPumpCount}`;
+                rawHistoryData = data || []; // Lưu dữ liệu gốc
+                renderHistoryTable(); // Vẽ bảng
+            })
+            .catch(() => tbody.innerHTML = "<tr><td colspan='3'>Lỗi tải dữ liệu</td></tr>");
+    }
 
-                data.forEach(i => {
-                    const color = i.action.includes('ON') || i.action.includes('BẬT') ? '#27ae60' : '#2980b9';
-                    tbody.innerHTML += `<tr><td>${i.time}</td><td style="color:${color};font-weight:bold">${i.action}</td><td>${i.detail || ''}</td></tr>`;
-                });
-            });
+    function renderHistoryTable() {
+        const tbody = document.getElementById('histBody');
+        const filter = document.getElementById('filterType').value;
+        tbody.innerHTML = "";
+
+        if (rawHistoryData.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;color:#999'>Không có dữ liệu</td></tr>";
+            document.getElementById('pumpCountText').innerText = "Tổng số lần bơm: 0";
+            return;
+        }
+
+        // 1. Tính tổng số lần BƠM trong ngày (bất kể filter đang chọn là gì)
+        const totalPump = rawHistoryData.filter(i => i.action.includes('ON') || i.action.includes('BẬT') || i.action.includes('PUMP')).length;
+        document.getElementById('pumpCountText').innerText = `Tổng số lần bơm hôm nay: ${totalPump}`;
+
+        // 2. Lọc dữ liệu hiển thị theo Dropdown
+        const filteredData = rawHistoryData.filter(i => {
+            if (filter === 'ALL') return true;
+            if (filter === 'AI') return i.action.includes('AI') || i.detail.includes('AI') || i.action.includes('AUTO');
+            if (filter === 'PUMP') return i.action.includes('ON') || i.action.includes('OFF') || i.action.includes('BẬT') || i.action.includes('TẮT');
+            return true;
+        });
+
+        if (filteredData.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='3' style='text-align:center'>Không tìm thấy dữ liệu phù hợp</td></tr>";
+            return;
+        }
+
+        filteredData.forEach(i => {
+            // Tô màu cho đẹp
+            let color = '#333';
+            let icon = '';
+            if (i.action.includes('ON') || i.action.includes('BẬT')) { color = '#27ae60'; icon='💧'; } // Xanh lá
+            else if (i.action.includes('OFF') || i.action.includes('TẮT')) { color = '#c0392b'; icon='⛔'; } // Đỏ
+            else if (i.action.includes('AI') || i.action.includes('AUTO')) { color = '#8e44ad'; icon='🤖'; } // Tím
+
+            tbody.innerHTML += `<tr>
+                <td style="color:#666">${i.time}</td>
+                <td style="color:${color};font-weight:bold">${icon} ${i.action}</td>
+                <td>${i.detail}</td>
+            </tr>`;
+        });
     }
 </script>
 </body>
