@@ -225,26 +225,31 @@ def on_message(client, userdata, msg):
     try:
         payload = msg.payload.decode()
         
-        # --- 1. NHẬN SỐ LIỆU TỪ ESP ---
+        # --- 1. NHẬN SỐ LIỆU TỪ ESP (CẢM BIẾN) ---
         if msg.topic == PREFIX + "esp/data" and "H:" in payload:
             try:
                 val = int(payload.split("H:")[1].split()[0])
                 state['soil'] = max(0, min(100, val))
                 
+                # Logic an toàn: Ngập úng là tắt bơm ngay
                 if state['soil'] >= FLOOD_LEVEL and state['pump']:
                     control_pump(False, "Safety Cutoff")
                 
+                # Logic AUTO: Tự động gọi AI hoặc ngắt bơm
                 elif state['mode'] == 'AUTO':
+                    # Nếu đất khô -> Gọi AI kiểm tra xem có nên tưới không
                     if state['soil'] < CRITICAL_LEVEL: 
                         threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
                     
+                    # Nếu đang bơm -> Kiểm tra xem đã đủ ẩm theo mục tiêu của AI chưa
                     if state['pump']:
                         nums = re.findall(r'\d+', str(state['ai_target']))
                         if nums:
                             target_val = int(nums[0])
+                            # Tưới dư ra 3% cho chắc rồi mới tắt
                             if state['soil'] >= (target_val + 3):
                                 control_pump(False, "AI Target Reached")
-                broadcast()
+                broadcast() # Có số liệu mới -> Gửi ngay xuống web
             except: pass
 
         # --- 2. NHẬN SỰ KIỆN TỪ WEB ---
@@ -282,8 +287,16 @@ def on_message(client, userdata, msg):
             
             elif evt == 'user_control' and state['mode'] == 'MANUAL':
                 control_pump(bool(data['pump']), "Người dùng bấm")
-            broadcast()
-    except: pass
+
+            # === ĐOẠN MỚI THÊM: XỬ LÝ KHI WEB MỚI VÀO ===
+            elif evt == 'get_status':
+                print("📥 Web mới vào -> Gửi toàn bộ dữ liệu (Broadcast)")
+                broadcast()
+            # ============================================
+
+            broadcast() # Cập nhật trạng thái sau khi xử lý sự kiện
+    except Exception as e:
+        print(f"❌ Lỗi trong on_message: {e}")
 
 def run_mqtt():
     mqtt_client.on_connect = lambda c,u,f,rc: (c.subscribe([ (PREFIX+"esp/data",0), (PREFIX+"events",0) ]), print("✅ MQTT CONNECTED"))
@@ -302,3 +315,4 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
