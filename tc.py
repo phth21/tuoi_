@@ -17,7 +17,7 @@ USERS = {
 }
 
 # CONFIG BACKEND
-GEMINI_API_KEY = "AIzaSyBXGeCm85AMf3q0G31x7WL1U8ykewUf2BA"
+GEMINI_API_KEY = "AIzaSyDuFwYnmr8k5LtNaBfWUemiVkWERLrrhSk"
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
 
@@ -308,11 +308,7 @@ def on_message(client, userdata, msg):
             elif evt == 'user_control' and state['mode'] == 'MANUAL':
                 control_pump(bool(data['pump']), "Người dùng bấm")
 
-            # === ĐOẠN MỚI THÊM: XỬ LÝ KHI WEB MỚI VÀO ===
-            elif evt == 'get_status':
-                print("📥 Web mới vào -> Gửi toàn bộ dữ liệu (Broadcast)")
-                broadcast()
-            # ============================================
+            
 
             broadcast() # Cập nhật trạng thái sau khi xử lý sự kiện
     except Exception as e:
@@ -335,6 +331,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
