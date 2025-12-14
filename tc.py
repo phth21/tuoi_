@@ -36,31 +36,12 @@ except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 # AI CONNECT
 model = None
 try:
-    # Liệt kê tất cả model hỗ trợ generateContent
-    available_models = [
-        m.name for m in genai.list_models()
-        if 'generateContent' in m.supported_generation_methods
-    ]
-    
-    # Danh sách ưu tiên: Tìm model flash mới nhất (2.5 > 2.0)
-    priority_models = [
-        m for m in available_models 
-        if 'flash' in m.lower() and ('2.5' in m or 'latest' in m)
-    ]
-    
-    if priority_models:
-        # Chọn cái đầu tiên (thường là mới nhất)
-        selected_model = priority_models[0]
-    else:
-        # Fallback: Chọn bất kỳ flash nào có
-        flash_models = [m for m in available_models if 'flash' in m.lower()]
-        selected_model = flash_models[0] if flash_models else available_models[0]
-    
-    model = genai.GenerativeModel(selected_model)
-    print(f"--- AI GEMINI READY: {selected_model} ---")
+    # Model ổn định 
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    print("--- AI GEMINI READY: gemini-2.5-flash ---")
 except Exception as e:
     model = None
-    print(f"Lỗi khởi tạo AI: {e}")
+    print(f"Lỗi khởi tạo AI chi tiết: {e}")  # In lỗi cụ thể để debug
 
 # BIẾN TOÀN CỤC
 CRITICAL_LEVEL = 26 
@@ -331,6 +312,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
