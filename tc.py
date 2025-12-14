@@ -36,13 +36,13 @@ except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 # AI CONNECT
 model = None
 try:
-    # Model ổn định 
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    print("--- AI GEMINI READY: gemini-2.5-flash ---")
+    # Model ổn định và rẻ nhất hiện tại
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    print("--- AI GEMINI READY: gemini-1.5-flash ---")
 except Exception as e:
     model = None
-    print(f"Lỗi khởi tạo AI chi tiết: {e}")  # In lỗi cụ thể để debug
-
+    print(f"❌ Lỗi khởi tạo AI chi tiết: {e}")
+    
 # BIẾN TOÀN CỤC
 CRITICAL_LEVEL = 26 
 FLOOD_LEVEL = 90
@@ -139,71 +139,76 @@ def update_weather():
 
 # --- LOGIC AI MỚI (CHÍNH XÁC NHƯ BẠN YÊU CẦU) ---
 def ask_gemini(force=False):
-    if state['mode'] != 'AUTO': return 
-    
-    # Check nhanh ngập úng (Ưu tiên cao nhất - Không cần AI)
-    if state['soil'] >= FLOOD_LEVEL:
-        control_pump(False, "Safety Check")
+    global model
+    print(f"\n--- 🕒 BẮT ĐẦU QUY TRÌNH AI (Soil: {state['soil']}%) ---")
+
+    # 1. Tự sửa lỗi Model nếu bị mất
+    if model is None:
+        print("⚠️ Model chưa có, đang tạo lại...")
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            print("✅ Đã tạo lại model Flash!")
+        except Exception as e:
+            print(f"❌ Tạo model thất bại: {e}")
+            return
+
+    # 2. Kiểm tra điều kiện chạy
+    if state['mode'] != 'AUTO':
+        print("🛑 Không chạy vì Mode không phải AUTO")
         return
 
-    if not model: 
-        print("Lỗi: Model AI chưa sẵn sàng")
-        return
-
-    now = time.time()
-    is_emergency = state['soil'] < CRITICAL_LEVEL
+    # Bỏ qua check thời gian để test cho nhanh
+    # if not force and (time.time() - state['last_ai_call'] < 60): ...
     
-    # === LOGIC COOLDOWN (QUAN TRỌNG) ===
-    time_diff = now - state['last_ai_call']
-    
-    if force:
-        pass # Cho qua
-    elif is_emergency:
-        if time_diff < 15: return # Chống spam API khi khẩn cấp
-    else:
-        if time_diff < 120: return # Chờ 2 phút
-
-    # Cập nhật cảnh báo hiển thị
-    if is_emergency: state['warning'] = "KHẨN CẤP: ĐẤT QUÁ KHÔ!"
-    elif state['soil'] >= FLOOD_LEVEL: state['warning'] = f"CẢNH BÁO: NGẬP ÚNG (>{FLOOD_LEVEL}%)!"
-    else: state['warning'] = "" 
-
-    broadcast()
-
-    # Prompt ngắn gọn, tiết kiệm Token
+    # 3. Soạn Prompt đơn giản nhất có thể (để tránh lỗi xử lý chuỗi)
     prompt = f"""
-    Đóng vai kỹ sư nông nghiệp.
-    Dữ liệu: Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm.
-    Khẩn cấp (<26%): {is_emergency}.
-    
-    Yêu cầu trả về đúng định dạng JSON: 
-    {{ "decision": "ON hoặc OFF", "timing": "...", "target": "XX%", "reason": "..." }}
-    
-    Lưu ý:
-    - "target": Độ ẩm mục tiêu để dừng bơm (bạn phải tự dự đoán).
-    - "timing": Mô tả ngắn gọn bao giờ tưới(bắt buộc phải có thời gian nhất định) và độ ẩm dự đoán là bao nhiêu.
-    - "reason": Lý do ngắn gọn giải thích tại sao tưới đến độ ẩm đấy.
+    Dữ liệu cảm biến: Độ ẩm đất {state['soil']}%.
+    Bạn là kỹ sư nông nghiệp. Hãy trả lời dưới dạng JSON thuần túy (không markdown):
+    {{ "action": "TƯỚI" hoặc "KHÔNG", "reason": "lý do ngắn gọn" }}
     """
+
     try:
-        print(f"📡 Đang gọi Gemini... (Soil: {state['soil']}%)")
-        res = model.generate_content(prompt)
-        match = re.search(r'\{.*\}', res.text, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-            dec = data.get('decision', 'OFF').upper()
-            state['ai_timing'] = data.get('timing', '...')
-            state['ai_target'] = data.get('target', '...')
-            state['ai_reason'] = data.get('reason', '...')
+        print("🚀 Đang gửi lệnh lên Google (Chờ phản hồi)...")
+        
+        # Thêm timeout để không bị treo mãi mãi (10 giây)
+        # Lưu ý: Cần import thư viện generation_types nếu muốn dùng config chuẩn, 
+        # nhưng ở đây ta gọi trần cho đơn giản, Google tự timeout sau 30s.
+        
+        response = model.generate_content(prompt)
+        
+        print("✅ Google ĐÃ phản hồi!") 
+        print(f"📝 Nội dung thô: {response.text}") # In toẹt ra xem nó trả lời cái gì
+
+        # 4. Xử lý kết quả (Try catch riêng để nếu lỗi JSON vẫn biết)
+        try:
+            text = response.text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(text)
             
-            # Cập nhật thời gian gọi thành công
-            state['last_ai_call'] = now 
+            action = data.get('action', 'KHÔNG')
+            reason = data.get('reason', 'Không rõ')
             
-            log_event("AI_DECISION", f"AI: {dec} ({state['ai_reason']})")
-            control_pump(dec == 'ON', "AI Logic")
-            print(f"✅ AI Done: {dec} | {state['ai_reason']}")
+            print(f"🎯 Kết quả phân tích: {action} - {reason}")
+            
+            # Cập nhật trạng thái
+            state['ai_reason'] = reason
+            state['last_ai_call'] = time.time()
+            
+            if action == 'TƯỚI':
+                control_pump(True, "AI Quyết định")
+            else:
+                control_pump(False, "AI Quyết định")
+                
+            broadcast()
+            
+        except json.JSONDecodeError:
+            print(f"❌ Lỗi đọc JSON. AI trả lời không đúng định dạng: {text}")
+
     except Exception as e:
-        print(f"❌ AI Error: {e}")
-    broadcast()
+        print(f"❌ LỖI NGHIÊM TRỌNG KHI GỌI GOOGLE: {e}")
+        # Nếu lỗi liên quan đến 404/Not Found -> Reset model
+        if "404" in str(e) or "not found" in str(e):
+             print("♻️ Phát hiện lỗi Model, reset biến model về None.")
+             model = None
 
 def control_pump(on, source="System"):
     if on and state['soil'] >= FLOOD_LEVEL:
@@ -312,6 +317,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
