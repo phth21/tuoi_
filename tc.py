@@ -34,6 +34,7 @@ try:
 except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 
 # AI CONNECT
+genai.configure(api_key=GEMINI_API_KEY)
 model = None
 try:
     print("🔍 Đang quét Server Google để tìm Model phù hợp...")
@@ -363,6 +364,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
