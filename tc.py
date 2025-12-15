@@ -37,7 +37,7 @@ except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 genai.configure(api_key=GEMINI_API_KEY)
 model = None
 try:
-    model = genai.GenerativeModel('gemini-1.5-pro')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     print("✅ AI GEMINI READY")
 except Exception as e:
     print(f"❌ Lỗi khởi tạo AI: {e}")
@@ -338,6 +338,7 @@ if __name__ == '__main__':
     # Chạy trên mọi IP để thiết bị khác truy cập được
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
