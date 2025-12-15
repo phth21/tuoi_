@@ -17,7 +17,10 @@ USERS = {
 }
 
 # CONFIG BACKEND
-GEMINI_API_KEY = os.getenv("GEMINI_KEY", "AIzaSyDuFwYnmr8k5LtNaBfWUemiVkWERLrrhSk").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("❌ GEMINI_KEY environment variable not set")
+
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
 
@@ -316,6 +319,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
