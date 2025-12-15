@@ -17,8 +17,7 @@ USERS = {
 }
 
 # --- CẤU HÌNH API & DATABASE ---
-# ⚠️ QUAN TRỌNG: Thay API Key thật của bạn vào đây nếu chưa set biến môi trường
-GEMINI_API_KEY = os.getenv("GEMINI_KEY", "Dien_API_Key_Gemini_Cua_Ban_Vao_Day").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_KEY", "").strip()
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232") # Key mẫu (nên thay bằng key riêng)
 MONGO_URI = os.getenv("MONGO_URI") # Ví dụ: "mongodb+srv://..."
 
@@ -339,3 +338,4 @@ if __name__ == '__main__':
     # Chạy trên mọi IP để thiết bị khác truy cập được
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
