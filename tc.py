@@ -37,34 +37,51 @@ try:
         print("⚠️ Cảnh báo: Chưa có MONGO_URI, lịch sử sẽ không được lưu.")
 except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 
-# ====================== AI AUTO-DISCOVERY (TỰ TÌM MODEL) ======================
+# ====================== AI AUTO-DISCOVERY (THỬ SAI TRỰC TIẾP) ======================
 genai.configure(api_key=GEMINI_API_KEY)
 model = None
 
 def init_gemini_model():
-    """Hàm tự động chọn model xịn nhất có thể dùng được"""
+    """
+    Hàm khởi tạo AI theo kiểu 'Thử Sai'. 
+    Nó sẽ gửi thử 1 tin nhắn 'test' tới Google. 
+    Cái nào không lỗi 404 thì lấy cái đó.
+    """
     global model
-    print("\n🔍 Đang quét các model AI khả dụng...")
-    priority_list = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]
-    selected_name = "gemini-pro"
+    print("\n🔍 Đang dò tìm model AI phù hợp...")
     
-    try:
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        found = False
-        for target in priority_list:
-            for av in available_models:
-                if target in av:
-                    selected_name = target
-                    found = True
-                    break
-            if found: break
-        
-        print(f"✅ Đã chọn model: {selected_name}")
-        return genai.GenerativeModel(selected_name)
-    except Exception as e:
-        print(f"⚠️ Không quét được danh sách model ({e}). Dùng mặc định 'gemini-pro'")
-        return genai.GenerativeModel('gemini-pro')
+    # Danh sách các tên model có thể dùng (Ưu tiên Flash -> Pro -> Cũ)
+    candidates = [
+        "gemini-1.5-flash",          # Bản chuẩn, nhanh, free
+        "gemini-1.5-flash-latest",   # Bản mới nhất của Flash
+        "gemini-1.5-pro",            # Bản Pro (thông minh hơn)
+        "gemini-1.5-pro-latest",     # Bản Pro mới nhất
+        "gemini-1.0-pro",            # Bản ổn định đời cũ
+    ]
+    
+    for name in candidates:
+        try:
+            print(f"   👉 Đang thử: {name}...", end=" ")
+            temp_model = genai.GenerativeModel(name)
+            
+            # QUAN TRỌNG: Gọi thử 1 lệnh giả để xem có bị lỗi 404 không
+            temp_model.generate_content("Test") 
+            
+            print("✅ KẾT NỐI THÀNH CÔNG!")
+            return temp_model
+        except Exception as e:
+            # Nếu lỗi, in ra ngắn gọn rồi thử cái tiếp theo
+            err_msg = str(e)
+            if "404" in err_msg or "not found" in err_msg:
+                print("❌ (Không tìm thấy/Lỗi model)")
+            else:
+                print(f"❌ (Lỗi khác: {err_msg[:30]}...)")
+            continue
 
+    print("\n⚠️ CẢNH BÁO: Không model nào chạy được. Đang ép dùng 'gemini-1.5-flash'...")
+    return genai.GenerativeModel("gemini-1.5-flash")
+
+# Khởi tạo lần đầu
 try:
     model = init_gemini_model()
     print("--- AI SYSTEM READY ---")
@@ -160,17 +177,18 @@ def ask_gemini(force=False):
     if state['mode'] != 'AUTO': return
     
     if not force and elapsed < cooldown_time:
-        # Chỉ in log cooldown nếu là trường hợp khẩn cấp để debug, còn lại im lặng
+        # Chỉ in log cooldown nếu là trường hợp khẩn cấp để debug
         if is_emergency: print(f"⏳ Đất khô ({state['soil']}%) - Chờ {cooldown_time}s (Mới {int(elapsed)}s)")
         return
 
     print(f"\n--- 🤖 AI CHECK | Soil={state['soil']}% | Mode={'KHẨN CẤP' if is_emergency else 'ĐỊNH KỲ'} ---")
 
+    # Đảm bảo model tồn tại trước khi gọi
     if model is None:
         model = init_gemini_model()
         if model is None: return
 
-    # 3. Prompt thông minh hơn
+    # 3. Prompt thông minh
     urgent_note = ""
     if is_emergency:
         urgent_note = "CẢNH BÁO: ĐẤT ĐANG RẤT KHÔ! HÃY ƯU TIÊN TƯỚI NGAY LẬP TỨC!"
@@ -183,15 +201,32 @@ def ask_gemini(force=False):
     Trả lời DUY NHẤT JSON:
     {{
       "action": "TƯỚI" hoặc "KHÔNG",
-      "target": số % độ ẩm mục tiêu (ví dụ 75),
-      "timing": "Tưới ngay" hoặc "Chờ...",
-      "reason": "Lý do ngắn (dưới 10 từ)"
+      "target": Độ ẩm mục tiêu để dừng bơm (bạn phải tự dự đoán),
+      "timing": Mô tả ngắn gọn bao giờ tưới(bắt buộc phải có thời gian nhất định) và độ ẩm dự đoán là bao nhiêu,
+      "reason": Lý do ngắn gọn giải thích tại sao tưới đến độ ẩm đấy
     }}
     """
 
     try:
-        response = model.generate_content(prompt)
+        # --- THỰC HIỆN GỌI AI ---
+        # Thêm cơ chế: Nếu lỗi model thì tự đổi và gọi lại ngay lập tức (Retry logic)
+        try:
+            response = model.generate_content(prompt)
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e):
+                print("🔄 Model hiện tại bị lỗi 404. Đang đổi model khác và THỬ LẠI NGAY...")
+                model = init_gemini_model() # Tìm model mới
+                if model:
+                    response = model.generate_content(prompt) # Gọi lại lần 2
+                else:
+                    return # Chịu thua
+            else:
+                raise e # Nếu lỗi khác (mạng rớt...) thì ném ra ngoài để log
+
+        # 4. Xử lý kết quả (Parse JSON)
         raw = response.text.strip()
+        # print("📝 AI RAW:", raw) # Bật dòng này nếu muốn debug xem AI trả lời gì
+        
         text = raw.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
 
@@ -212,7 +247,9 @@ def ask_gemini(force=False):
 
     except Exception as e:
         print("❌ AI ERROR:", e)
-        if "404" in str(e): model = init_gemini_model()
+        # Vẫn giữ dòng này để phòng hờ các lỗi khác làm hỏng model
+        if "404" in str(e) or "not found" in str(e): 
+            model = init_gemini_model()
 
 def control_pump(on, source="System"):
     if on and state['soil'] >= FLOOD_LEVEL:
@@ -308,3 +345,4 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
