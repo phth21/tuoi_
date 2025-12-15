@@ -17,7 +17,7 @@ USERS = {
 }
 
 # CONFIG BACKEND
-GEMINI_API_KEY = os.getenv("GEMINI_KEY", "AIzaSyDnmQNHRgXXPgl-ZhK-Et8EiAW9MjTh-5s").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_KEY", "AIzaSyDuFwYnmr8k5LtNaBfWUemiVkWERLrrhSk").strip()
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
 
@@ -36,9 +36,9 @@ except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 # AI CONNECT
 genai.configure(api_key=GEMINI_API_KEY)
 try:
-    # Dùng bản 2.5 Flash: Nhanh, nhẹ, phù hợp IoT
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    print("--- AI GEMINI 2.5 FLASH READY ---")
+    # Dùng bản 1.5 Flash:
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    print("--- AI GEMINI 1.5 FLASH READY ---")
 except Exception as e:
     model = None
     print(f"Lỗi khởi tạo AI: {e}")
@@ -145,7 +145,7 @@ def ask_gemini(force=False):
     # 1. Ensure model
     if model is None:
         try:
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             print("✅ Re-created Gemini model")
         except Exception as e:
             print("❌ Model init fail:", e)
@@ -316,6 +316,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
