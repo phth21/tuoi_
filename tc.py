@@ -35,60 +35,13 @@ except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 
 # AI CONNECT
 genai.configure(api_key=GEMINI_API_KEY)
-model = None
 try:
-    print("🔍 Đang quét Server Google để tìm Model phù hợp...")
-    
-    # 1. Lấy danh sách tất cả model đang sống
-    all_models = [
-        m.name for m in genai.list_models()
-        if 'generateContent' in m.supported_generation_methods
-    ]
-    
-    # In ra để debug xem Server đang trả về cái gì
-    print(f"📋 Danh sách model tìm thấy: {all_models}")
-
-    # 2. Danh sách ưu tiên (Từ xịn nhất đến cũ nhất)
-    # Ưu tiên số 1: Gemini 2.5 Flash (Workhorse của năm 2025)
-    # Ưu tiên số 2: Gemini 2.5 Pro
-    # Ưu tiên số 3: Các bản Flash đời cũ (nếu 2.5 chưa kịp load)
-    priority_list = [
-        'gemini-2.5-flash', 
-        'gemini-2.5-pro',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash' # Fallback cuối cùng
-    ]
-    
-    selected_model_name = None
-
-    # Vòng lặp tìm kiếm: So khớp danh sách ưu tiên với danh sách thực tế
-    for p in priority_list:
-        # Google thường trả về tên dạng 'models/gemini-2.5-flash'
-        # Nên ta kiểm tra xem chuỗi ưu tiên có nằm trong tên thực tế không
-        matches = [m for m in all_models if p in m]
-        if matches:
-            selected_model_name = matches[0] # Lấy cái đầu tiên khớp
-            break
-            
-    # 3. Fallback: Nếu không tìm thấy cái nào trong list ưu tiên
-    if not selected_model_name and all_models:
-        print("⚠️ Không thấy model 2.5 nào, chọn đại model đầu tiên có chữ 'flash'...")
-        flash_models = [m for m in all_models if 'flash' in m]
-        if flash_models:
-            selected_model_name = flash_models[0]
-        else:
-            selected_model_name = all_models[0] # Vơ bèo gạt tép
-
-    # 4. KẾT NỐI
-    if selected_model_name:
-        model = genai.GenerativeModel(selected_model_name)
-        print(f"✅ --- AI READY: Đã chọn [{selected_model_name}] ---")
-    else:
-        print("❌ LỖI: Không tìm thấy bất kỳ model nào khả dụng!")
-
+    # Dùng bản 2.5 Flash: Nhanh, nhẹ, phù hợp IoT
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    print("--- AI GEMINI 2.5 FLASH READY ---")
 except Exception as e:
     model = None
-    print(f"❌ Lỗi khởi tạo AI: {e}")
+    print(f"Lỗi khởi tạo AI: {e}")
     
 # BIẾN TOÀN CỤC
 CRITICAL_LEVEL = 26 
@@ -364,6 +317,7 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
