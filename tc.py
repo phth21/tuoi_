@@ -153,27 +153,23 @@ def control_pump(on, source):
     broadcast()
 
 # --- XỬ LÝ MQTT ---
+# Trong file tc.py
 def on_message(c, u, msg):
     try:
         payload = msg.payload.decode()
         
-        # 1. NHẬN DỮ LIỆU CẢM BIẾN (Từ ESP32)
+        # 1. NHẬN DỮ LIỆU CẢM BIẾN
         if "esp/data" in msg.topic and "H:" in payload:
-            # Format tin nhắn ví dụ: "H:45 T:30 R:0"
             parts = payload.split()
             for p in parts:
                 if "H:" in p: state['soil'] = int(p.replace("H:",""))
                 if "T:" in p: state['temp'] = float(p.replace("T:",""))
             
-            # Logic Tự động ngắt/bật
             if state['mode'] == 'AUTO':
-                # Gọi AI khẩn cấp nếu đất khô
                 if state['soil'] < CRITICAL_LEVEL: 
                     threading.Thread(target=ask_gemini, kwargs={'force':False}).start()
-                # Tự ngắt nếu đã đủ ẩm (Mục tiêu AI + 3%)
                 if state['pump'] and state['soil'] >= (state['ai_target'] + 3): 
                     control_pump(False, "Auto Target Reached")
-            
             broadcast()
 
         # 2. NHẬN SỰ KIỆN TỪ WEB
@@ -184,6 +180,7 @@ def on_message(c, u, msg):
                 state['mode'] = d['data']['mode']; state['step'] = 2
                 if state['mode'] == 'AUTO': 
                     threading.Thread(target=ask_gemini, kwargs={'force':True}).start()
+                broadcast() # <--- QUAN TRỌNG: Gửi xác nhận để Web vào màn hình chính
             
             elif evt == 'user_control': 
                 control_pump(bool(d['data']['pump']), "User Remote")
@@ -191,19 +188,20 @@ def on_message(c, u, msg):
             elif evt == 'get_status': 
                 broadcast()
             
-            elif evt == 'force_locate': # <--- WEB GỌI HÀM NÀY KHI VỪA MỞ
+            elif evt == 'force_locate': 
                 threading.Thread(target=auto_locate).start()
                 
             elif evt == 'select_region': 
                 state['region'] = d['data']['region']; state['step'] = 1
+                broadcast() # <--- QUAN TRỌNG: Gửi xác nhận để Web sang màn hình chọn Mode
                 
-            elif evt == 'set_city': # <--- CHỈNH VỊ TRÍ THỦ CÔNG
+            elif evt == 'set_city': 
                 state['location'] = d['data']['city'] + " (Thủ công)"
                 broadcast()
             
-            elif evt == 'exit_dashboard': # <--- RESET CẤU HÌNH
+            elif evt == 'exit_dashboard':
                 state['step'] = 0; state['mode'] = 'NONE'
-                broadcast()
+                broadcast() # <--- QUAN TRỌNG: Để Web quay về màn hình đầu
 
     except Exception as e: print(f"MQTT Error: {e}")
 
@@ -219,3 +217,4 @@ if __name__ == '__main__':
     # Tự động định vị lần đầu khi server bật
     threading.Thread(target=auto_locate).start()
     app.run(host='0.0.0.0', port=5000, use_reloader=False)
+
