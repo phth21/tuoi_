@@ -1,3 +1,4 @@
+# tc.py — SMART GARDEN HYBRID (FLASK + MONGODB + GEMINI SDK 1.0)
 import threading, time, json, re, os
 import paho.mqtt.client as mqtt
 import requests
@@ -5,11 +6,11 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect
 from pymongo import MongoClient
 
-# 🔥 SDK MỚI (GOOGLE GENAI v1.0+)
+# 🔥 SDK AI MỚI (GOOGLE GENAI v1.0)
 from google import genai
 from google.genai import types
 
-# ====================== CẤU HÌNH SERVER ======================
+# ====================== 1. CẤU HÌNH SERVER & DATABASE ======================
 app = Flask(__name__)
 app.secret_key = 'thao_cute_sieu_cap_vipro'
 
@@ -19,27 +20,27 @@ USERS = {
     'khach': {'pass': '1111',     'role': 'VIEWER'}
 }
 
-# CONFIG BACKEND
+# CONFIG KEYS
 GEMINI_KEY = os.getenv("GEMINI_KEY")
-if not GEMINI_KEY:
-    print("⚠️ CẢNH BÁO: Chưa set GEMINI_KEY! AI sẽ không chạy.")
-
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
 
-# MONGODB CONNECT
+# MONGODB CONNECT (Thay thế Firebase)
 db_collection = None
 try:
     if MONGO_URI:
-        mongo_client = MongoClient(MONGO_URI)
+        mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+        mongo_client.server_info() # Check kết nối
         db = mongo_client.get_database("smart_garden_db")
         db_collection = db.history
         print("--- MONGODB ATLAS CONNECTED ---")
     else:
         print("⚠️ Cảnh báo: Chưa có MONGO_URI")
-except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
+except Exception as e:
+    print(f"❌ Lỗi MongoDB: {e}")
+    db_collection = None
 
-# ====================== AI AUTO-DISCOVERY (SDK MỚI) ======================
+# ====================== 2. CẤU HÌNH AI (SDK MỚI) ======================
 ai_client = None
 CURRENT_MODEL = "gemini-1.5-flash"
 
@@ -47,45 +48,33 @@ if GEMINI_KEY:
     ai_client = genai.Client(api_key=GEMINI_KEY)
 
 def find_working_model():
-    """
-    Logic 'Thử Sai' của bạn, nhưng viết lại cho SDK mới.
-    Nó sẽ thử từng model, cái nào chạy được thì chốt.
-    """
+    """Dò tìm model AI còn sống (Logic giữ nguyên vì rất tốt)"""
     global CURRENT_MODEL
-    print("\n🔍 Đang dò tìm model AI (SDK Mới)...")
-    
-    candidates = [
-        "gemini-2.0-flash-exp",     # Bản 2.0 mới nhất (rất nhanh)
-        "gemini-1.5-flash",         # Bản ổn định
-        "gemini-1.5-pro",           # Bản thông minh
-        "gemini-1.5-flash-8b"       # Bản siêu nhẹ
-    ]
+    print("\n🔍 Đang dò tìm model AI...")
+    candidates = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro"]
     
     for name in candidates:
         try:
-            print(f"   👉 Đang thử: {name}...", end=" ")
-            # Gọi thử một lệnh test
             ai_client.models.generate_content(
                 model=name, contents="Test", 
                 config=types.GenerateContentConfig(max_output_tokens=5)
             )
-            print("✅ OK!")
             CURRENT_MODEL = name
+            print(f"✅ Đã chọn model: {CURRENT_MODEL}")
             return True
-        except Exception as e:
-            print(f"❌ Lỗi ({e})")
-            continue
-            
-    print("⚠️ Tất cả model đều lỗi. Giữ nguyên model cũ.")
+        except: continue
     return False
 
-# Chạy dò model lần đầu
 if ai_client: find_working_model()
 
-# ====================== BIẾN TOÀN CỤC ======================
-FLOOD_LEVEL = 90
-EMERGENCY_LEVEL = 25 
+# ====================== 3. THAM SỐ HỆ THỐNG (TỪ CODE MẪU) ======================
+CRITICAL_LEVEL = 26  # Đất khô khẩn cấp
+FLOOD_LEVEL    = 90  # Ngập úng tuyệt đối
 
+BROKER = "broker.hivemq.com"
+PREFIX = "thaocute_smartgarden/"
+
+# DATABASE TỈNH THÀNH
 REGIONAL_DB = {
     'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68), "Lào Cai":(22.48,103.97)},
     'CENTRAL': {"Đà Nẵng":(16.05,108.20), "Huế":(16.46,107.59), "Nha Trang":(12.23,109.19)},
@@ -94,30 +83,25 @@ REGIONAL_DB = {
 ALL_CITIES = {}
 for r in REGIONAL_DB.values(): ALL_CITIES.update(r)
 
-BROKER = "broker.hivemq.com"
-PREFIX = "thaocute_smartgarden/"
-
 state = {
     'step': 0, 'region': 'NORTH', 'mode': 'NONE', 'location': "Đang dò...", 
     'lat': None, 'lon': None, 'soil': 0, 'temp': 25.0, 'humidity': 80, 'rain': 0.0,
-    'ai_timing': "...", 'ai_target': 100, 'ai_reason': "...", 
+    'ai_timing': "...", 'ai_target': 75, 'ai_reason': "...", 
     'pump': False, 'warning': "", 'last_ai_call': 0
 }
 
 mqtt_client = mqtt.Client(client_id=f"Render_Server_{int(time.time())}")
 
-# ====================== FLASK ROUTES (GIỮ NGUYÊN) ======================
+# ====================== 4. FLASK ROUTES ======================
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if 'user' not in session:
-        error = None
         if request.method == 'POST':
             u = request.form.get('username'); p = request.form.get('password')
             if u in USERS and USERS[u]['pass'] == p:
                 session['user'] = u; session['role'] = USERS[u]['role']
                 return redirect('/')
-            else: error = "Sai tên hoặc mật khẩu!"
-        return render_template('login.html', error=error)
+        return render_template('login.html')
     return render_template('dashboard.html', user=session['user'], role=session['role'])
 
 @app.route('/logout')
@@ -126,19 +110,24 @@ def logout(): session.clear(); return redirect('/')
 @app.route('/api/history')
 def get_history():
     date_str = request.args.get('date')
-    if db_collection is None: return jsonify([])
+    if not db_collection: return jsonify([])
     try:
         logs = list(db_collection.find({"date": date_str}, {'_id': 0}).sort("created_at", -1))
         return jsonify(logs)
     except: return jsonify([])
 
-# ====================== LOGIC HỆ THỐNG ======================
+# ====================== 5. HÀM LOGIC (GHÉP TỪ CODE MẪU) ======================
 def log_event(action, detail):
-    if db_collection is None: return
+    """Ghi log vào MongoDB"""
+    if not db_collection: return
     try:
         now_vn = datetime.utcnow() + timedelta(hours=7)
-        record = {"date": now_vn.strftime("%Y-%m-%d"), "time": now_vn.strftime("%H:%M:%S"),
-                  "action": action, "detail": detail, "soil": state['soil'], "created_at": now_vn}
+        record = {
+            "date": now_vn.strftime("%Y-%m-%d"), 
+            "time": now_vn.strftime("%H:%M:%S"),
+            "action": action, "detail": detail, 
+            "soil": state['soil'], "created_at": now_vn
+        }
         db_collection.insert_one(record)
     except: pass
 
@@ -155,109 +144,132 @@ def update_weather():
             state['temp'] = r['main']['temp']; state['humidity'] = r['main']['humidity']
             state['rain'] = r.get('rain', {}).get('1h', 0.0)
             if "Thủ công" not in state['location']: state['location'] = r.get('name') + " (VN)"
-            if state['mode'] == 'AUTO': 
+            
+            # Chỉ gọi AI khi có thời tiết mới VÀ đang AUTO
+            if state['mode'] == 'AUTO':
                 threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
     except: pass
     broadcast()
 
-# --- 🔥 HÀM HỎI AI (GIỮ NGUYÊN LOGIC CỦA BẠN - DÙNG SDK MỚI) ---
+# --- 🔥 TRÁI TIM CỦA HỆ THỐNG: AI LOGIC (ĐÃ GHÉP) ---
 def ask_gemini(force=False):
     global CURRENT_MODEL
     
-    # 1. Logic Cooldown (120s / 30s)
-    is_emergency = state['soil'] < EMERGENCY_LEVEL
-    cooldown_time = 30 if is_emergency else 120
-    elapsed = time.time() - state['last_ai_call']
-    
-    if state['mode'] != 'AUTO': return
-    if not force and elapsed < cooldown_time:
-        if is_emergency: print(f"⏳ Đất khô ({state['soil']}%) - Chờ {cooldown_time}s...")
+    # 1. Check an toàn trước
+    if state['soil'] >= FLOOD_LEVEL:
+        control_pump(False, "Safety Check (Ngập)")
         return
 
-    if not ai_client: return
+    if state['mode'] != 'AUTO' or not ai_client: return
 
-    print(f"\n--- 🤖 AI CHECK ({CURRENT_MODEL}) | Soil={state['soil']}% ---")
+    now = time.time()
+    is_emergency = state['soil'] < CRITICAL_LEVEL
+    time_diff = now - state['last_ai_call']
 
-    # 2. Prompt
-    urgent_note = "CẢNH BÁO: ĐẤT RẤT KHÔ! ƯU TIÊN TƯỚI NGAY!" if is_emergency else ""
+    # 2. Logic Cooldown (Giống code mẫu)
+    # - Nếu Force (ép buộc): Chạy luôn
+    # - Nếu Khẩn cấp: Chờ tối thiểu 15s (Chống spam)
+    # - Bình thường: Chờ 120s (Tiết kiệm tiền/quota)
+    if force:
+        pass 
+    elif is_emergency:
+        if time_diff < 15: return 
+    else:
+        if time_diff < 120: return
+
+    # Cập nhật warning để hiển thị Web
+    if is_emergency: state['warning'] = "KHẨN CẤP: ĐẤT QUÁ KHÔ!"
+    else: state['warning'] = ""
+
+    print(f"\n📡 Đang gọi Gemini... (Soil: {state['soil']}%)")
+
+    # 3. Prompt (Giống code mẫu - Kỹ sư nông nghiệp)
     prompt = f"""
-    Độ ẩm đất: {state['soil']}%. Nhiệt độ: {state['temp']}C. Mưa 1h: {state['rain']}mm.
-    {urgent_note}
-    Bạn là hệ thống tưới cây. Trả lời DUY NHẤT JSON (không markdown):
-    {{
-      "action": "TƯỚI" hoặc "KHÔNG",
-      "target": số_nguyên (ví dụ 75),
-      "timing": "...",
-      "reason": "..."
-    }}
+    Đóng vai kỹ sư nông nghiệp.
+    Dữ liệu: Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm.
+    Khẩn cấp (<{CRITICAL_LEVEL}%): {is_emergency}.
+    
+    Yêu cầu trả về đúng định dạng JSON: 
+    {{ "decision": "ON hoặc OFF", "timing": "...", "target": số_nguyên, "reason": "..." }}
+    
+    Lưu ý:
+    - "target": Độ ẩm mục tiêu để dừng bơm (VD: 75).
+    - "timing": Mô tả ngắn gọn bao giờ tưới.
+    - "reason": Lý do ngắn gọn.
     """
 
     try:
-        # --- LOGIC RETRY (THỬ LẠI NẾU LỖI) ---
+        # Gọi SDK Mới
         response = None
         try:
-            # SDK mới: Ép kiểu JSON ngay tại config -> Không cần regex lọc nữa
             response = ai_client.models.generate_content(
-                model=CURRENT_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json", 
-                    temperature=0.5
-                )
+                model=CURRENT_MODEL, contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.5)
             )
-        except Exception as e:
-            print(f"⚠️ Model {CURRENT_MODEL} lỗi ({e}). Đang tìm model khác...")
-            # Nếu lỗi -> Gọi hàm dò tìm lại ngay lập tức
+        except:
+            # Retry logic
             if find_working_model():
-                # Thử lại lần 2 với model mới tìm được
                 response = ai_client.models.generate_content(
-                    model=CURRENT_MODEL,
-                    contents=prompt,
+                    model=CURRENT_MODEL, contents=prompt,
                     config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
-            else:
-                return # Chịu thua
+            else: return
 
-        # 3. Xử lý kết quả (JSON chuẩn)
+        # Xử lý kết quả
         if response and response.text:
-            data = json.loads(response.text)
+            # Lọc markdown nếu AI lỡ tay thêm vào
+            raw = response.text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw)
 
-            action = data.get("action", "KHÔNG")
-            target = int(data.get("target", 80)) # Default 80
-            timing = data.get("timing", "...")
-            reason = data.get("reason", "...")
+            decision = data.get("decision", "OFF").upper() # ON/OFF
+            target   = int(data.get("target", 75))
+            timing   = data.get("timing", "...")
+            reason   = data.get("reason", "...")
 
-            state['ai_target'] = target; state['ai_timing'] = timing; state['ai_reason'] = reason
-            state['last_ai_call'] = time.time()
+            state['ai_target'] = target
+            state['ai_timing'] = timing
+            state['ai_reason'] = reason
+            state['last_ai_call'] = now
 
-            print(f"🎯 AI → {action} | Target={target}% | {timing}")
+            print(f"🎯 AI → {decision} | Target={target}% | {reason}")
+            log_event("AI_DECISION", f"AI: {decision} ({reason})")
 
-            if action == "TƯỚI": control_pump(True, "AI Decision")
-            else: control_pump(False, "AI Decision")
-            
+            control_pump(decision == "ON", "AI Logic")
             broadcast()
 
     except Exception as e:
-        print(f"❌ AI FATAL ERROR: {e}")
+        print(f"❌ AI Error: {e}")
 
-# ====================== ĐIỀU KHIỂN BƠM ======================
+# ====================== ĐIỀU KHIỂN BƠM (GHÉP LOGIC AN TOÀN) ======================
 def control_pump(on, source="System"):
-    # Safety Check (Ngập úng)
-    if on and state['soil'] >= FLOOD_LEVEL:
-        on = False; state['warning'] = "NGẬP ÚNG! TỪ CHỐI BƠM"
-    if state['step'] != 2 and on: on = False 
-    
+    # 1. Chỉ cho phép bơm ở Step 2 (Mode AUTO/MANUAL)
+    if state['step'] != 2 and on: on = False
+
+    # 2. LOGIC CHỐNG NGẬP TUYỆT ĐỐI (>= 90%)
+    if state['soil'] >= FLOOD_LEVEL and on:
+        on = False
+        state['warning'] = f"NGẬP ÚNG! CẤM BƠM (>{FLOOD_LEVEL}%)"
+        print(f"⚠️ [SAFETY] Đất {state['soil']}% -> Block bơm!")
+
+    # Xóa cảnh báo nếu đã an toàn
+    if not on and CRITICAL_LEVEL <= state['soil'] < FLOOD_LEVEL:
+        state['warning'] = ""
+
+    # Gửi lệnh MQTT
     if state['pump'] != on:
         state['pump'] = on
         cmd = "ON" if on else "OFF"
         mqtt_client.publish(PREFIX + "cmd", cmd)
         log_event(f"PUMP_{cmd}", source)
         print(f"💦 PUMP {cmd} ({source})")
-    
-    if not on and state['warning'] == "NGẬP ÚNG! TỪ CHỐI BƠM": state['warning'] = ""
+
+    # Dự phòng: Luôn gửi OFF nếu đất đang ngập (đề phòng gói tin trước bị mất)
+    elif on == False and state['soil'] >= FLOOD_LEVEL:
+        mqtt_client.publish(PREFIX + "cmd", "OFF")
+
     broadcast()
 
-# ====================== MQTT HANDLE (GIỮ NGUYÊN) ======================
+# ====================== MQTT HANDLE ======================
 def on_message(client, userdata, msg):
     try:
         payload = msg.payload.decode()
@@ -268,21 +280,26 @@ def on_message(client, userdata, msg):
                 val = int(payload.split("H:")[1].split()[0])
                 state['soil'] = max(0, min(100, val))
                 
-                # A. AN TOÀN (Ngập là cắt)
+                # A. AN TOÀN (Ngập là cắt ngay lập tức)
                 if state['soil'] >= FLOOD_LEVEL and state['pump']:
-                    control_pump(False, "Safety Cutoff")
+                    control_pump(False, "Auto-Cutoff (Sensor)")
                 
                 # B. LOGIC AUTO
-                elif state['mode'] == 'AUTO':
-                    threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
+                elif state['mode'] == 'AUTO' and state['step'] == 2:
+                    # Nếu đất khô khẩn cấp -> Gọi AI ngay (bỏ qua cooldown 2 phút)
+                    if state['soil'] < CRITICAL_LEVEL:
+                         threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
                     
-                    # 🔴 LOGIC TỰ NGẮT THEO TARGET (Của bạn)
+                    # 🔴 LOGIC TỰ NGẮT THÔNG MINH (Target + 3%)
+                    # Nếu đang bơm mà đất đã ẩm hơn mục tiêu AI đề ra 3% -> Tắt
                     if state['pump']:
                         try:
                             target_val = int(state['ai_target'])
-                            if state['soil'] >= target_val:
-                                control_pump(False, f"Đạt mục tiêu {target_val}%")
+                            # Bù 3% cho quán tính nước thấm
+                            if state['soil'] >= (target_val + 3):
+                                control_pump(False, f"Đạt mục tiêu {target_val}% (+3%)")
                         except: pass
+                
                 broadcast() 
             except: pass
 
@@ -295,23 +312,23 @@ def on_message(client, userdata, msg):
             elif evt == 'enter_mode':
                 state['mode'] = data['mode']; state['step'] = 2
                 log_event("MODE_CHANGE", f"Chuyển chế độ {state['mode']}")
-                if state['mode'] == 'AUTO': threading.Thread(target=ask_gemini, kwargs={'force': True}, daemon=True).start()
+                # Vào Auto -> Gọi AI ngay (Force)
+                if state['mode'] == 'AUTO': 
+                    threading.Thread(target=ask_gemini, kwargs={'force': True}, daemon=True).start()
+                else:
+                    control_pump(False, "Init Manual")
                 broadcast()
             elif evt == 'exit_dashboard':
-                state['step'] = 0; state['mode'] = 'NONE'; control_pump(False)
+                state['step'] = 0; state['mode'] = 'NONE'; control_pump(False); broadcast()
             elif evt == 'set_city':
                 city = data.get('city')
                 if city in ALL_CITIES:
                     state['lat'], state['lon'] = ALL_CITIES[city]
                     state['location'] = f"{city} (Thủ công)"
                     threading.Thread(target=update_weather, daemon=True).start()
-            elif evt == 'set_gps':
-                state['lat'] = data['lat']; state['lon'] = data['lon']
-                state['location'] = "📍 Đang lấy tên..."; broadcast()
-                threading.Thread(target=update_weather, daemon=True).start()
             elif evt == 'user_control' and state['mode'] == 'MANUAL':
                 control_pump(bool(data['pump']), "Người dùng bấm")
-            broadcast()
+            
     except Exception as e: print(f"❌ Lỗi on_message: {e}")
 
 def run_mqtt():
@@ -325,4 +342,4 @@ except: pass
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
