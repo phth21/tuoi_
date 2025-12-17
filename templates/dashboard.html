@@ -2,229 +2,210 @@
 <html lang="vi">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Smart Garden Pro</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root { --primary:#2e7d32; --bg-app:#e8f5e9; --text-main:#1b5e20; --danger:#d32f2f; --ai-color:#673ab7; --ai-bg:#ede7f6; }
-        body { margin:0; font-family:'Be Vietnam Pro', sans-serif; background:var(--bg-app); min-height:100vh; display:flex; justify-content:center; color:#333; }
-        .screen { position:fixed; top:0; left:0; width:100%; height:100%; background:linear-gradient(135deg, #e8f5e9, #c8e6c9); z-index:100; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:20px; box-sizing:border-box; }
-        .btn-big { width:100%; max-width:320px; padding:18px; margin:10px 0; border:none; border-radius:16px; background:white; box-shadow:0 4px 15px rgba(46,125,50,0.15); font-size:16px; font-weight:700; display:flex; align-items:center; gap:15px; cursor:pointer; }
-        #mainApp { display:none; width:100%; max-width:480px; padding:15px; }
-        .card { background:white; border-radius:24px; padding:20px; box-shadow:0 10px 30px rgba(46,125,50,0.1); border:1px solid #dcedc8; }
-        .soil-container { display:flex; justify-content:center; margin:15px 0; position:relative; }
-        .soil-circle { width:160px; height:160px; border-radius:50%; border:12px solid #f1f8e9; display:flex; flex-direction:column; justify-content:center; align-items:center; transition:all 0.4s ease; background:white; }
-        .soil-val { font-size:48px; font-weight:800; color:var(--primary); line-height:1; }
-        .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:20px 0; }
-        .sensor-box { background:#f9fbe7; padding:12px 5px; border-radius:16px; text-align:center; border:1px solid #f0f4c3; }
-        .btn-pump { width:100%; padding:20px; border-radius:16px; border:none; font-weight:bold; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; }
-        .btn-on { background:linear-gradient(135deg, #4caf50, #2e7d32); }
-        .btn-off { background:linear-gradient(135deg, #ef5350, #c62828); }
-        .popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
-        .popup-box { background:white; width:90%; max-width:450px; border-radius:24px; padding:20px; max-height:85vh; display:flex; flex-direction:column; }
+        :root { --primary:#2e7d32; --bg-app:#e8f5e9; --danger:#d32f2f; }
+        body { margin:0; font-family:'Be Vietnam Pro', sans-serif; background:var(--bg-app); color:#333; display:flex; justify-content:center; }
+        .screen { position:fixed; width:100%; height:100%; background:#e8f5e9; z-index:99; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+        #mainApp { width:100%; max-width:480px; padding:15px; box-sizing:border-box; display:none; }
+        .card { background:white; border-radius:20px; padding:20px; box-shadow:0 5px 20px rgba(0,0,0,0.05); margin-bottom:15px; position: relative; }
+        .btn-big { width:100%; max-width:300px; padding:15px; margin:10px; border:none; border-radius:12px; background:white; font-weight:bold; box-shadow:0 4px 10px rgba(0,0,0,0.1); cursor:pointer; }
         
-        /* CSS CHO BẢNG LỊCH SỬ */
-        .table-wrap { overflow-y:auto; flex:1; border-radius:12px; border:1px solid #eee; margin-top:10px; }
-        table { width:100%; border-collapse:collapse; font-size:13px; }
-        th { text-align:left; background:#f1f8e9; color:var(--primary); padding:12px; font-weight:700; position:sticky; top:0; }
-        td { padding:12px; border-bottom:1px solid #f5f5f5; color:#444; }
+        /* ĐỒNG HỒ ĐO */
+        .soil-circle { width:150px; height:150px; border-radius:50%; border:10px solid #f1f8e9; margin:0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; transition: 0.5s; }
+        .soil-val { font-size:40px; font-weight:800; color:var(--primary); }
+        
+        /* ICON CHỈNH SỬA (CÂY BÚT) */
+        .edit-icon { cursor:pointer; opacity:0.6; transition:0.3s; margin-left: 8px; font-size: 18px; color: #2e7d32; }
+        .edit-icon:hover { opacity:1; transform: scale(1.2); }
+
+        .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:20px; }
+        .sensor-box { background:#f9fbe7; padding:10px; border-radius:12px; text-align:center; font-size:12px; }
+        
+        .history-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+        .history-table th { text-align:left; color:#777; padding:8px; border-bottom:1px solid #eee; }
+        .history-table td { padding:8px; border-bottom:1px solid #f5f5f5; }
+        
+        .btn-pump { width:100%; padding:15px; border-radius:12px; border:none; color:white; font-weight:bold; cursor:pointer; margin-top:15px; }
+
+        /* POPUP CHỌN TP */
+        .popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+        .popup-box { background:white; width:90%; max-width:400px; border-radius:20px; padding:20px; max-height:80vh; overflow-y:auto; }
+        .city-item { padding:12px; border-bottom:1px solid #eee; cursor:pointer; font-weight:500; }
+        .city-item:hover { background:#f1f8e9; color:var(--primary); }
     </style>
 </head>
 <body>
 
-{% if role != 'VIEWER' %}
 <div id="screenRegion" class="screen">
-    <h2 style="color:var(--primary)">🌿 Khu Vực</h2>
-    <button class="btn-big" onclick="selectRegion('NORTH')"><span>🏯</span> Miền Bắc</button>
-    <button class="btn-big" onclick="selectRegion('CENTRAL')"><span>🏖️</span> Miền Trung</button>
-    <button class="btn-big" onclick="selectRegion('SOUTH')"><span>🌴</span> Miền Nam</button>
+    <h3>🌍 Chọn Vùng Của Bạn</h3>
+    <button class="btn-big" onclick="selectRegion('NORTH')">Miền Bắc</button>
+    <button class="btn-big" onclick="selectRegion('CENTRAL')">Miền Trung</button>
+    <button class="btn-big" onclick="selectRegion('SOUTH')">Miền Nam</button>
 </div>
 <div id="screenMode" class="screen" style="display:none">
-    <h2 style="color:var(--primary)">⚙️ Chế Độ</h2>
-    <button class="btn-big" style="color:var(--ai-color); border:2px solid var(--ai-color)" onclick="emit('enter_mode',{mode:'AUTO'})"><span>🤖</span> Auto (AI)</button>
-    <button class="btn-big" onclick="emit('enter_mode',{mode:'MANUAL'})"><span>🎮</span> Thủ Công</button>
+    <h3>⚙️ Chọn Chế Độ</h3>
+    <button class="btn-big" style="color:#673ab7" onclick="enterMode('AUTO')">🤖 TỰ ĐỘNG (AI)</button>
+    <button class="btn-big" onclick="enterMode('MANUAL')">🎮 THỦ CÔNG</button>
 </div>
-{% endif %}
 
 <div id="mainApp">
     <div class="card">
-        <div style="display:flex; justify-content:space-between; margin-bottom:15px">
-            <div style="font-weight:800; color:var(--primary); font-size:18px">🌱 Smart Garden</div>
-            <div>
-                {% if role != 'VIEWER' %} <button onclick="exit()" style="background:#f1f8e9; border:none; padding:8px; border-radius:8px; cursor:pointer">Menu</button> {% endif %}
-                <a href="/logout" style="text-decoration:none; color:var(--danger); background:#ffebee; padding:8px; border-radius:8px; font-size:12px">Thoát</a>
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px">
+            <b style="color:var(--primary)">🌱 Smart Garden</b>
+            <a href="/logout" style="color:#d32f2f; text-decoration:none; font-size:12px">Thoát</a>
+        </div>
+        
+        <div style="text-align:center; margin-bottom:15px">
+            <div style="font-weight:bold; font-size:16px; display:flex; justify-content:center; align-items:center;">
+                📍 <span id="loc">Đang tìm vị trí...</span>
+                <span class="edit-icon" onclick="openCityPopup()" title="Sửa vị trí thủ công">✏️</span>
             </div>
+            <div style="font-size:11px; color:#777" id="modeLabel">--</div>
         </div>
 
-        <div style="text-align:center">
-            <div style="font-weight:700">📍 <span id="loc">...</span></div>
-            <div style="font-size:11px; color:#777; margin-bottom:10px" id="modeLabel">--</div>
+        <div class="soil-circle" id="soilBox">
+            <span class="soil-val" id="soil">--</span>
+            <span style="font-size:10px; color:#666">% ĐỘ ẨM</span>
         </div>
-
-        <div class="soil-container">
-            <div class="soil-circle" id="soilBox">
-                <span class="soil-val" id="soil">--</span><span style="font-size:12px; color:#888; font-weight:600">% ĐỘ ẨM</span>
-            </div>
-        </div>
-        <div style="text-align:center; font-weight:bold; color:#555; margin-bottom:5px" id="pumpSt">--</div>
-        <div style="text-align:center; color:var(--danger); height:18px; font-weight:bold" id="warn"></div>
+        
+        <div style="text-align:center; margin-top:10px; font-weight:bold; color:#555" id="pumpSt">--</div>
+        <div style="text-align:center; color:var(--danger); font-weight:bold; height:20px" id="warn"></div>
 
         <div class="grid-3">
-            <div class="sensor-box"><span class="s-val" id="temp">--°</span><br><span style="font-size:11px">Nhiệt độ</span></div>
-            <div class="sensor-box"><span class="s-val" id="hum">--%</span><br><span style="font-size:11px">Không khí</span></div>
-            <div class="sensor-box"><span class="s-val" id="rain">--</span><br><span style="font-size:11px">Mưa</span></div>
+            <div class="sensor-box"><b id="temp" style="font-size:16px">--</b><br>Nhiệt độ</div>
+            <div class="sensor-box"><b id="hum" style="font-size:16px">--</b><br>Không khí</div>
+            <div class="sensor-box"><b id="rain" style="font-size:16px">--</b><br>Mưa</div>
         </div>
 
-        <div id="panelAuto" style="display:none; background:var(--ai-bg); padding:15px; border-radius:16px; border:1px solid #d1c4e9">
-            <div style="color:var(--ai-color); font-weight:bold; font-size:12px; text-align:center; margin-bottom:10px">GEMINI AI CONTROL</div>
-            <div style="font-size:14px"><b>Mục tiêu:</b> <span id="aiTarget" style="background:white; padding:2px 8px; border-radius:6px; font-weight:800">--%</span></div>
-            <div style="font-size:14px; margin-top:5px"><b>Dự kiến:</b> <span id="aiTiming">...</span></div>
-            <div style="font-size:14px; margin-top:5px"><b>Lý do:</b> <span id="aiReason" style="font-style:italic">...</span></div>
+        <div id="panelAuto" style="display:none; background:#ede7f6; padding:10px; border-radius:12px; margin-top:15px; font-size:13px">
+            <b style="color:#673ab7">🤖 AI GEMINI:</b> Mục tiêu <b id="aiTarget">--%</b>.<br>
+            <i id="aiReason" style="color:#555">...</i>
         </div>
-
-        <div id="panelManual" style="display:none; padding-top:10px">
-            {% if role == 'VIEWER' %} <button class="btn-pump" style="background:#b0bec5">🔒 CHẾ ĐỘ KHÁCH</button>
-            {% else %}
-                <button id="btnOn" class="btn-pump btn-on" onclick="pump(true)">💧 BẬT BƠM</button>
-                <button id="btnOff" class="btn-pump btn-off" onclick="pump(false)" style="display:none">⛔ TẮT BƠM</button>
-            {% endif %}
+        <div id="panelManual" style="display:none">
+            <button id="btnOn" class="btn-pump" style="background:#2e7d32" onclick="pump(true)">BẬT BƠM 💧</button>
+            <button id="btnOff" class="btn-pump" style="background:#c62828; display:none" onclick="pump(false)">TẮT BƠM ⛔</button>
         </div>
+    </div>
 
-        <button onclick="openHistory()" style="width:100%; margin-top:15px; padding:12px; background:#e8f5e9; border:none; border-radius:12px; color:var(--primary); font-weight:bold; cursor:pointer">📅 Xem Nhật Ký</button>
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+            <b>📜 Nhật Ký</b>
+            <button onclick="loadHistory()" style="font-size:11px; padding:5px 10px; border:1px solid #ddd; background:none; border-radius:15px">🔄</button>
+        </div>
+        <table class="history-table">
+            <thead><tr><th>Giờ</th><th>Độ ẩm</th><th>Hành động</th></tr></thead>
+            <tbody id="histBody">
+                <tr><td colspan="3" style="text-align:center; color:#999">...</td></tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
-<div id="historyPopup" class="popup" onclick="if(event.target==this) this.style.display='none'">
-    <div class="popup-box" style="height:80vh">
-        <div style="display:flex; justify-content:space-between; margin-bottom:10px">
-            <h3 style="margin:0; color:var(--primary)">Nhật Ký</h3>
-            <input type="date" id="dateInput" onchange="loadHistory()" style="border:1px solid #ddd; padding:5px; border-radius:8px">
-        </div>
-        
-        <select id="filterType" onchange="renderHistoryTable()" style="width:100%; padding:8px; border-radius:8px; margin-bottom:10px; border:1px solid #ccc">
-            <option value="ALL">Xem tất cả</option>
-            <option value="AI">🤖 Chỉ xem AI</option>
-            <option value="PUMP">💧 Chỉ xem Bơm</option>
-        </select>
-
-        <div class="table-wrap">
-            <table>
-                <thead><tr>
-                    <th width="15%">Giờ</th>
-                    <th width="15%">Độ ẩm</th> <th width="25%">HĐ</th>
-                    <th>Chi tiết</th>
-                </tr></thead>
-                <tbody id="histBody"></tbody>
-            </table>
-        </div>
-        <button onclick="document.getElementById('historyPopup').style.display='none'" style="width:100%; margin-top:10px; padding:10px; border:none; background:#eee">Đóng</button>
+<div id="cityPopup" class="popup" onclick="if(event.target==this) this.style.display='none'">
+    <div class="popup-box">
+        <h3 style="color:var(--primary); margin-top:0">Chọn Vị Trí Thủ Công</h3>
+        <p style="font-size:12px; color:#666">Sử dụng khi GPS định vị sai:</p>
+        <div id="cityList"></div>
+        <button onclick="document.getElementById('cityPopup').style.display='none'" style="width:100%; margin-top:10px; padding:10px; border:none; background:#eee">Đóng</button>
     </div>
 </div>
 
 <script>
-    const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
+    const CLIENT_ID = 'web_' + Math.random().toString(16).substr(2, 8);
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { clientId: CLIENT_ID });
     const PREFIX = "thaocute_smartgarden/";
-    const ROLE = "{{ role }}" || "VIEWER"; 
-    const client = mqtt.connect(BROKER, { keepalive: 60, clientId: 'web_' + Math.random().toString(16).substr(2, 8) });
-    let rawHistoryData = [];
+    
+    // DANH SÁCH THÀNH PHỐ (ĐỂ CHỌN THỦ CÔNG)
+    const CITIES = {
+        'NORTH': ["Hà Nội", "Hải Phòng", "Quảng Ninh", "Lào Cai", "Sơn La", "Nam Định"],
+        'CENTRAL': ["Đà Nẵng", "Huế", "Nha Trang", "Thanh Hóa", "Vinh", "Quy Nhơn"],
+        'SOUTH': ["TP.HCM", "Cần Thơ", "Đồng Nai", "Vũng Tàu", "Bình Dương", "Cà Mau"]
+    };
+    let currentRegion = 'NORTH';
 
-    // HÀM HIỂN THỊ MÀN HÌNH
-    function checkDisplay(step) {
-        if (ROLE === 'VIEWER') { document.getElementById('mainApp').style.display = 'block'; return; }
-        ['screenRegion', 'screenMode', 'mainApp'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).style.display='none'; });
-        if (step===0) document.getElementById('screenRegion').style.display='flex';
-        else if (step===1) document.getElementById('screenMode').style.display='flex';
-        else if (step===2) document.getElementById('mainApp').style.display='block';
+    function showStep(s) {
+        document.getElementById('screenRegion').style.display = s===0 ? 'flex':'none';
+        document.getElementById('screenMode').style.display = s===1 ? 'flex':'none';
+        document.getElementById('mainApp').style.display = s===2 ? 'block':'none';
+        if(s===2) loadHistory();
     }
-    checkDisplay(0);
+    showStep(0);
 
-    // MQTT
-    client.on('connect', () => { client.subscribe(PREFIX + 'update'); client.publish(PREFIX + 'events', JSON.stringify({event: 'get_status'})); });
-    client.on('message', (t, m) => updateUI(JSON.parse(m.toString())));
+    client.on('connect', () => { 
+        client.subscribe(PREFIX + 'update'); 
+        client.publish(PREFIX + 'events', JSON.stringify({event:'get_status'}));
+    });
+    
+    client.on('message', (t, m) => {
+        const d = JSON.parse(m.toString());
+        showStep(d.step);
+        if(d.region) currentRegion = d.region;
 
-    function updateUI(d) {
-        if (!d) return;
-        checkDisplay(d.step);
+        document.getElementById('loc').innerText = d.location;
+        document.getElementById('soil').innerText = d.soil;
+        document.getElementById('temp').innerText = d.temp + "°C";
+        document.getElementById('hum').innerText = d.humidity + "%";
+        document.getElementById('rain').innerText = d.rain;
+        document.getElementById('warn').innerText = d.warning;
+        document.getElementById('modeLabel').innerText = d.mode==='AUTO' ? "AUTO (AI)" : "THỦ CÔNG";
+        document.getElementById('soilBox').style.borderColor = d.soil < 30 ? "#d32f2f" : "#2e7d32";
+
+        const isPump = d.pump;
+        document.getElementById('pumpSt').innerText = isPump ? "💦 ĐANG TƯỚI..." : "MÁY BƠM TẮT";
         
-        const setText = (id, v) => { const e=document.getElementById(id); if(e) e.innerText=v; }
-        setText('loc', d.location); setText('soil', d.soil); setText('temp', d.temp+"°"); setText('hum', d.humidity+"%"); setText('rain', d.rain); setText('warn', d.warning);
-        setText('modeLabel', d.mode==='AUTO'?"CHẾ ĐỘ: TỰ ĐỘNG":"CHẾ ĐỘ: THỦ CÔNG");
-
-        const sb = document.getElementById('soilBox');
-        if(sb) sb.style.borderColor = d.soil < 30 ? "#d32f2f" : "#2e7d32";
-
-        if(d.pump) {
-            setText('pumpSt', "💦 ĐANG TƯỚI...");
-            if(document.getElementById('btnOn')) document.getElementById('btnOn').style.display='none';
-            if(document.getElementById('btnOff')) document.getElementById('btnOff').style.display='flex';
+        if(d.mode === 'MANUAL') {
+            document.getElementById('panelManual').style.display='block';
+            document.getElementById('panelAuto').style.display='none';
+            document.getElementById('btnOn').style.display = isPump ? 'none' : 'block';
+            document.getElementById('btnOff').style.display = isPump ? 'block' : 'none';
         } else {
-            setText('pumpSt', "MÁY BƠM TẮT");
-            if(document.getElementById('btnOn')) document.getElementById('btnOn').style.display='flex';
-            if(document.getElementById('btnOff')) document.getElementById('btnOff').style.display='none';
+            document.getElementById('panelManual').style.display='none';
+            document.getElementById('panelAuto').style.display='block';
+            document.getElementById('aiTarget').innerText = d.ai_target + "%";
+            document.getElementById('aiReason').innerText = d.ai_reason;
         }
+    });
 
-        const pAuto=document.getElementById('panelAuto'), pManual=document.getElementById('panelManual');
-        if(ROLE!=='VIEWER' && d.mode==='AUTO') {
-            pAuto.style.display='block'; pManual.style.display='none';
-            setText('aiTarget', d.ai_target+"%"); setText('aiTiming', d.ai_timing); setText('aiReason', d.ai_reason);
-        } else {
-            if(pAuto) pAuto.style.display='none';
-            if(pManual) pManual.style.display='block';
-        }
-    }
+    function selectRegion(r) { client.publish(PREFIX+'events', JSON.stringify({event:'select_region', data:{region:r}})); }
+    function enterMode(m) { client.publish(PREFIX+'events', JSON.stringify({event:'enter_mode', data:{mode:m}})); }
+    function pump(s) { client.publish(PREFIX+'events', JSON.stringify({event:'user_control', data:{pump:s}})); }
 
-    function emit(ev, data) { if(ROLE!=='VIEWER') client.publish(PREFIX+'events', JSON.stringify({event:ev, data:data||{}})); }
-    function selectRegion(r) { emit('select_region', {region:r}); }
-    function pump(s) { emit('user_control', {pump:s}); }
-    function exit() { if(confirm("Thoát?")) emit('exit_dashboard', {}); }
-
-    // --- XỬ LÝ LỊCH SỬ (ĐÃ SỬA ĐỂ HIỆN CỘT ĐỘ ẨM) ---
-    function openHistory() {
-        document.getElementById('historyPopup').style.display='flex';
-        const d = document.getElementById('dateInput');
-        if(d) { d.valueAsDate = new Date(); loadHistory(); }
+    // HÀM MỞ POPUP CHỌN THÀNH PHỐ
+    function openCityPopup() {
+        const list = document.getElementById('cityList');
+        list.innerHTML = "";
+        const regionList = CITIES[currentRegion] || CITIES['NORTH'];
+        
+        regionList.forEach(city => {
+            let div = document.createElement('div');
+            div.className = "city-item";
+            div.innerHTML = `📍 ${city}`;
+            div.onclick = () => {
+                client.publish(PREFIX+'events', JSON.stringify({event:'set_city', data:{city:city}}));
+                document.getElementById('cityPopup').style.display = 'none';
+            };
+            list.appendChild(div);
+        });
+        document.getElementById('cityPopup').style.display = 'flex';
     }
 
     function loadHistory() {
-        const d = document.getElementById('dateInput').value;
-        const tb = document.getElementById('histBody');
-        tb.innerHTML = "<tr><td colspan='4' style='text-align:center; padding:20px'>Đang tải...</td></tr>";
-        fetch('/api/history?date='+d).then(r=>r.json()).then(data=>{ rawHistoryData=data||[]; renderHistoryTable(); }).catch(()=>{});
-    }
-
-    function renderHistoryTable() {
-        const tb = document.getElementById('histBody');
-        const filter = document.getElementById('filterType').value;
-        tb.innerHTML = "";
-
-        if(rawHistoryData.length===0) { tb.innerHTML="<tr><td colspan='4' style='text-align:center; color:#999'>Trống</td></tr>"; return; }
-
-        const filtered = rawHistoryData.filter(i => {
-            if(filter==='ALL') return true;
-            if(filter==='AI') return i.action.includes('AI') || i.detail.includes('AI');
-            if(filter==='PUMP') return i.action.includes('ON') || i.action.includes('OFF') || i.action.includes('BẬT') || i.action.includes('PUMP');
-            return true;
-        });
-
-        filtered.forEach(i => {
-            let color='#444'; let icon='';
-            if(i.action.includes('ON')||i.action.includes('BẬT')) { color='#2e7d32'; icon='💧'; }
-            else if(i.action.includes('OFF')||i.action.includes('TẮT')) { color='#c62828'; icon='⛔'; }
-            else if(i.action.includes('AI')) { color='#673ab7'; icon='🤖'; }
-
-            // Logic màu cho độ ẩm
-            let soilVal = i.soil || 0;
-            let soilColor = soilVal < 30 ? "#d32f2f" : "#2e7d32"; // Đỏ nếu khô, Xanh nếu ẩm
-
-            tb.innerHTML += `<tr>
-                <td style="color:#777; font-size:11px">${i.time}</td>
-                <td style="font-weight:bold; color:${soilColor}">${soilVal}%</td> <td style="color:${color}; font-weight:700">${icon} ${i.action}</td>
-                <td style="font-size:12px">${i.detail}</td>
-            </tr>`;
+        fetch('/api/history').then(r=>r.json()).then(data => {
+            const tb = document.getElementById('histBody');
+            tb.innerHTML = "";
+            if(data.length === 0) { tb.innerHTML = "<tr><td colspan='3' style='text-align:center'>Trống</td></tr>"; return; }
+            data.forEach(Row => {
+                let color = Row.action.includes('ON') ? 'green' : (Row.action.includes('OFF') ? 'red' : 'purple');
+                let soilColor = Row.soil < 30 ? 'red' : 'green';
+                tb.innerHTML += `<tr><td>${Row.time}</td><td style="font-weight:bold; color:${soilColor}">${Row.soil}%</td><td style="color:${color}; font-weight:600">${Row.action}</td></tr>`;
+            });
         });
     }
+    setInterval(loadHistory, 10000);
 </script>
 </body>
 </html>
