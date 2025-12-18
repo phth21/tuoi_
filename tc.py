@@ -13,7 +13,7 @@ from google.genai import types
 app = Flask(__name__)
 app.secret_key = 'thao_cute_sieu_cap_vipro'
 
-# 🔒 [QUAN TRỌNG] KHÓA LUỒNG
+# 🔒 KHÓA LUỒNG
 ai_lock = threading.Lock()
 
 # TÀI KHOẢN
@@ -42,9 +42,10 @@ try:
         print("⚠️ Cảnh báo: Chưa có MONGO_URI")
 except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 
-# ====================== KHỞI TẠO AI (SỬA LỖI 404) ======================
+# ====================== KHỞI TẠO AI (TINH CHỈNH MODEL MỚI NHẤT) ======================
 ai_client = None
-CURRENT_MODEL = "gemini-2.0-flash-exp" # Giữ nguyên model mới nhất để không bị lỗi
+# Dùng bản 2.0 Flash Exp để thông minh hơn và tránh lỗi 404 cũ
+CURRENT_MODEL = "gemini-2.0-flash-exp" 
 
 if GEMINI_KEY:
     try:
@@ -55,7 +56,7 @@ if GEMINI_KEY:
 
 # ====================== BIẾN TOÀN CỤC ======================
 FLOOD_LEVEL = 90
-EMERGENCY_LEVEL = 25  # Mức báo động khô
+EMERGENCY_LEVEL = 25  # Mức báo động khô cần tưới gấp
 
 REGIONAL_DB = {
     'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68), "Lào Cai":(22.48,103.97)},
@@ -131,7 +132,7 @@ def update_weather():
     except: pass
     broadcast()
 
-# --- 🔥 HÀM HỎI AI (GIỮ NGUYÊN) ---
+# --- 🔥 HÀM HỎI AI (GIỮ NGUYÊN LOGIC, CHỈ CẬP NHẬT MODEL) ---
 def ask_gemini(force=False):
     if ai_lock.locked(): return 
     
@@ -139,20 +140,22 @@ def ask_gemini(force=False):
         if state['mode'] != 'AUTO': return
         if not ai_client: return
 
-        # Logic Cooldown
         now = time.time()
         elapsed = now - state['last_ai_call']
         is_emergency = state['soil'] < EMERGENCY_LEVEL
-        cooldown_time = 30 if is_emergency else 120 
+        
+        # Nếu đang khẩn cấp (đất khô), hỏi AI thường xuyên hơn (30s)
+        cooldown_time = 30 if is_emergency else 120
 
         if not force and elapsed < cooldown_time: return
 
         print(f"\n--- 🤖 AI CHECK ({CURRENT_MODEL}) | Soil={state['soil']}% ---")
 
-        urgent_note = "KHẨN CẤP: Đất quá khô!" if is_emergency else ""
+        urgent_note = "🔥 TÌNH TRẠNG KHẨN CẤP: Đất rất khô! Ưu tiên tưới!" if is_emergency else ""
         prompt = f"""
         Role: Hệ thống tưới cây.
-        Dữ liệu: Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm. {urgent_note}
+        Dữ liệu: Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm.
+        Lưu ý: {urgent_note}
         Output JSON only:
         {{ "action": "TƯỚI" hoặc "KHÔNG", "target": int, "timing": "string", "reason": "string" }}
         """
@@ -163,7 +166,7 @@ def ask_gemini(force=False):
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json", 
-                    temperature=0.5
+                    temperature=0.4
                 )
             )
 
@@ -187,7 +190,7 @@ def ask_gemini(force=False):
                 broadcast()
 
         except Exception as e:
-            print(f"❌ AI FATAL ERROR: {e}")
+            print(f"❌ AI ERROR: {e}")
 
 # ====================== ĐIỀU KHIỂN BƠM ======================
 def control_pump(on, source="System"):
@@ -202,10 +205,11 @@ def control_pump(on, source="System"):
         log_event(f"PUMP_{cmd}", source)
         print(f"💦 PUMP {cmd} ({source})")
     
+    # Chỉ tắt cảnh báo ngập khi bơm dừng, các cảnh báo khác do on_message lo
     if not on and "NGẬP" in state['warning']: state['warning'] = ""
     broadcast()
 
-# ====================== MQTT HANDLE (CHỈNH SỬA Ở ĐÂY) ======================
+# ====================== MQTT HANDLE (ĐÃ THÊM LOGIC CẢNH BÁO) ======================
 def on_message(client, userdata, msg):
     try:
         payload = msg.payload.decode()
@@ -216,15 +220,15 @@ def on_message(client, userdata, msg):
                 val = int(payload.split("H:")[1].split()[0])
                 state['soil'] = max(0, min(100, val))
                 
-                # --- 🔥 [ĐOẠN MỚI THÊM VÀO] XỬ LÝ CẢNH BÁO 🔥 ---
+                # --- 🔥🔥🔥 LOGIC CẢNH BÁO MỚI (START) 🔥🔥🔥 ---
                 if state['soil'] < EMERGENCY_LEVEL:
                     state['warning'] = "🔥 KHẨN CẤP: ĐẤT QUÁ KHÔ! CẦN TƯỚI NGAY!"
                 elif state['soil'] >= FLOOD_LEVEL:
                     state['warning'] = "⛔ NGUY HIỂM: NGẬP ÚNG!"
                 else:
-                    state['warning'] = "" # Ẩn đi nếu bình thường
-                # -----------------------------------------------
-
+                    state['warning'] = "" # Tự động ẩn khi đất bình thường
+                # --- 🔥🔥🔥 LOGIC CẢNH BÁO MỚI (END) 🔥🔥🔥 ---
+                
                 # A. AN TOÀN (Ngập là cắt)
                 if state['soil'] >= FLOOD_LEVEL and state['pump']:
                     control_pump(False, "Safety Cutoff")
