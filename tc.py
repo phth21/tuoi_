@@ -42,9 +42,11 @@ last_emergency_pump_time = 0
 # --- 🔥 SỬA PHẦN NÀY: DANH SÁCH MODEL CHUẨN ---
 # Cập nhật tên model mới nhất để tránh lỗi 404
 AI_MODELS_PRIORITY = [
-    "gemini-1.5-flash-002",  # Bản Flash mới nhất
-    "gemini-1.5-pro-002",    # Bản Pro mới nhất
-    "gemini-1.5-flash-latest" # Dự phòng
+    "gemini-3-flash-preview",     
+    "gemini-2.5-flash",          
+    "gemini-2.5-pro",             
+    "gemini-3-pro-preview",       
+    "gemini-2.0-flash"            
 ]
 
 REGIONAL_DB = {
@@ -348,4 +350,5 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
