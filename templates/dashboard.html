@@ -252,7 +252,15 @@
     <div class="popup-box" style="height:80vh">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
             <h3 style="margin:0; color:var(--primary)">Nhật Ký</h3>
-            <input type="date" id="dateInput" onchange="loadHistory()" style="border:1px solid #ddd; padding:5px; border-radius:8px">
+            <div>
+                <select id="filterType" onchange="renderHistoryTable()" style="border:1px solid #ddd; padding:5px; border-radius:8px; margin-right:5px">
+                    <option value="ALL">Tất cả</option>
+                    <option value="ON">Bơm Bật</option>
+                    <option value="OFF">Bơm Tắt</option>
+                    <option value="AUTO">AI / Tự động</option>
+                </select>
+                <input type="date" id="dateInput" onchange="loadHistory()" style="border:1px solid #ddd; padding:5px; border-radius:8px">
+            </div>
         </div>
         <div class="stats-header">
             <div class="stats-num" id="pumpCountText">0</div>
@@ -495,4 +503,5 @@
 </script>
 </body>
 </html>
+
 
