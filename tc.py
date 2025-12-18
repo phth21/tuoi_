@@ -1,13 +1,9 @@
 import threading, time, json, re, os
 import paho.mqtt.client as mqtt
-import requests
+import requests # Dùng cái này để gọi AI trực tiếp, không qua SDK nữa
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect
 from pymongo import MongoClient
-
-# 🔥 SDK MỚI (GOOGLE GENAI v1.0+)
-from google import genai
-from google.genai import types
 
 # ====================== 1. CẤU HÌNH SERVER ======================
 app = Flask(__name__)
@@ -23,6 +19,7 @@ USERS = {
 }
 
 # CONFIG BACKEND
+# Lưu ý: GEMINI_KEY phải còn hoạt động
 GEMINI_KEY = os.getenv("GEMINI_KEY")
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
@@ -37,21 +34,14 @@ try:
         print("--- MONGODB ATLAS CONNECTED ---")
 except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 
-# ====================== KHỞI TẠO AI ======================
-ai_client = None
-AI_MODELS_PRIORITY = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro"]
-
-if GEMINI_KEY:
-    try:
-        ai_client = genai.Client(api_key=GEMINI_KEY)
-        print("✅ AI READY")
-    except Exception as e: print(f"❌ Lỗi khởi tạo AI: {e}")
-
 # ====================== BIẾN TOÀN CỤC ======================
 FLOOD_LEVEL = 90
 EMERGENCY_LEVEL = 25 
 EMERGENCY_COOLDOWN = 300
 last_emergency_pump_time = 0 
+
+# Danh sách Model để thử lần lượt (Fallback)
+AI_MODELS_PRIORITY = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
 
 REGIONAL_DB = {
     'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68), "Lào Cai":(22.48,103.97)},
@@ -67,9 +57,9 @@ PREFIX = "thaocute_smartgarden/"
 state = {
     'step': 0, 'region': 'NORTH', 'mode': 'NONE', 'location': "Đang dò...", 
     'lat': None, 'lon': None, 'soil': 0, 'temp': 25.0, 'humidity': 80, 'rain': 0.0,
-    'ai_timing': "...", 'ai_target': 100, 'ai_reason': "...", 
+    'ai_timing': "...", 'ai_target': "...", 'ai_reason': "...", 
     'pump': False, 'warning': "", 'last_ai_call': 0,
-    'ai_initialized': False  # 🔥 Cờ mới: Kiểm tra AI đã dự đoán lần đầu chưa
+    'ai_initialized': False # Cờ: Chờ AI dự đoán lần đầu
 }
 
 mqtt_client = mqtt.Client(client_id=f"Render_Server_{int(time.time())}")
@@ -123,21 +113,57 @@ def update_weather():
             state['temp'] = r['main']['temp']; state['humidity'] = r['main']['humidity']
             state['rain'] = r.get('rain', {}).get('1h', 0.0)
             if "Thủ công" not in state['location']: state['location'] = r.get('name') + " (VN)"
-            # Chỉ gọi AI ở đây nếu AI đã khởi tạo rồi (để cập nhật định kỳ), còn lần đầu thì gọi ở enter_mode
+            
+            # Chỉ gọi AI định kỳ nếu đã Initialize xong
             if state['mode'] == 'AUTO' and state['ai_initialized']: 
                 threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
     except: pass
     broadcast()
 
-# --- HÀM HỎI AI ---
+# --- 🔥 HÀM GỌI AI TRỰC TIẾP (KHÔNG DÙNG SDK) ---
+def call_gemini_api_direct(model_name, prompt_text):
+    if not GEMINI_KEY: return None
+    
+    # URL API chuẩn của Google
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_KEY}"
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt_text}]
+        }],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0.4
+        }
+    }
+    
+    try:
+        # Gửi request POST trực tiếp
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        # Nếu lỗi 429 (Hết quota) hoặc 404/500
+        if response.status_code != 200:
+            print(f"⚠️ API Error ({model_name}): {response.status_code} - {response.text}")
+            return None # Trả về None để thử model khác
+
+        result = response.json()
+        # Lấy text từ JSON trả về
+        text_content = result['candidates'][0]['content']['parts'][0]['text']
+        return json.loads(text_content)
+        
+    except Exception as e:
+        print(f"❌ Connection Error ({model_name}): {e}")
+        return None
+
 def ask_gemini(force=False):
     if ai_lock.locked(): return 
     
     with ai_lock:
         if state['mode'] != 'AUTO': return
-        if not ai_client: return
+        if not GEMINI_KEY: return
 
-        # Nếu chưa initialize (lần đầu vào Auto), bỏ qua check thời gian -> Chạy luôn
+        # Kiểm tra thời gian nếu không phải ép buộc
         if state['ai_initialized']:
             now = time.time()
             elapsed = now - state['last_ai_call']
@@ -158,48 +184,42 @@ def ask_gemini(force=False):
         """
 
         success = False
+        # Vòng lặp thử từng model (Fallback)
         for model_name in AI_MODELS_PRIORITY:
             if success: break
-            try:
-                print(f"\n--- 🤖 AI Computing ({model_name})... ---")
-                response = ai_client.models.generate_content(
-                    model=model_name, contents=prompt,
-                    config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.4)
-                )
+            
+            print(f"\n--- 🤖 AI Direct Call: {model_name} ---")
+            data = call_gemini_api_direct(model_name, prompt)
+            
+            if data:
+                # Nếu có dữ liệu trả về hợp lệ
+                action = data.get("action", "KHÔNG").upper()
+                target = int(data.get("target", 75))
+                timing = data.get("timing", "...")
+                reason = data.get("reason", "...")
 
-                if response and response.text:
-                    data = json.loads(response.text)
-                    action = data.get("action", "KHÔNG").upper()
-                    target = int(data.get("target", 75))
-                    timing = data.get("timing", "...")
-                    reason = data.get("reason", "...")
+                state['ai_target'] = target; state['ai_timing'] = timing; state['ai_reason'] = reason
+                state['last_ai_call'] = time.time()
+                
+                # 🔥 Đánh dấu: AI đã hoạt động -> Cho phép hệ thống chạy
+                state['ai_initialized'] = True 
 
-                    state['ai_target'] = target; state['ai_timing'] = timing; state['ai_reason'] = reason
-                    state['last_ai_call'] = time.time()
-                    
-                    # 🔥 QUAN TRỌNG: Đánh dấu AI đã hoạt động -> Cho phép hệ thống chạy tiếp
-                    state['ai_initialized'] = True 
-
-                    print(f"🎯 AI Result: {action} | {reason}")
-                    log_event(f"AI_{model_name}", f"{action} - {reason}")
-                    
-                    # AI ra lệnh thì thực thi ngay
-                    if action == "TƯỚI": control_pump(True, "AI Start")
-                    else: control_pump(False, "AI Stop")
-                    
-                    broadcast()
-                    success = True
-            except Exception as e:
-                if "429" in str(e): continue
-                else: break
+                print(f"🎯 AI Success ({model_name}): {action} | {reason}")
+                log_event(f"AI_{model_name}", f"{action} - {reason}")
+                
+                if action == "TƯỚI": control_pump(True, "AI Start")
+                else: control_pump(False, "AI Stop")
+                
+                broadcast()
+                success = True # Thoát vòng lặp
+            else:
+                print(f"⚠️ Model {model_name} thất bại. Thử cái tiếp theo...")
 
 # ====================== ĐIỀU KHIỂN BƠM ======================
 def control_pump(on, source="System"):
-    # An toàn tuyệt đối: Đất quá ẩm thì cấm bơm (trừ khi đang tắt bơm)
     if on and state['soil'] >= FLOOD_LEVEL:
         on = False; state['warning'] = "⛔ NGUY HIỂM: NGẬP ÚNG!"
     
-    # Nếu đang không ở Dashboard (step != 2) thì cấm bật
     if state['step'] != 2 and on: on = False 
     
     if state['pump'] != on:
@@ -230,19 +250,15 @@ def on_message(client, userdata, msg):
                 val = int(payload.split("H:")[1].split()[0])
                 state['soil'] = max(0, min(100, val))
 
-                # 🔥 LOGIC MỚI: NẾU AUTO MÀ AI CHƯA CHẠY -> IM LẶNG TUYỆT ĐỐI
+                # --- LOGIC MỚI: AUTO CHỜ AI ---
                 if state['mode'] == 'AUTO' and not state['ai_initialized']:
-                    # Không làm gì cả, chờ AI ở thread khác quyết định
-                    # Nhưng nếu quá lâu AI chưa chạy (do mạng lag), ta vẫn có thể trigger lại ở đây
+                    # Im lặng chờ AI
                     broadcast()
                     return 
 
-                # --- Logic bên dưới chỉ chạy khi: Mode là MANUAL hoặc (AUTO đã có AI_Initialized) ---
-                
-                # Logic tưới khẩn cấp (Chỉ chạy khi AI đã Initialized hoặc Manual)
+                # Logic chạy khi đã Initialized hoặc Manual
                 if state['soil'] < EMERGENCY_LEVEL:
                     state['warning'] = "🔥 KHẨN CẤP: ĐẤT QUÁ KHÔ!"
-                    # Chỉ tự tưới khẩn cấp nếu đang AUTO (và AI đã OK)
                     if state['mode'] == 'AUTO' and not state['pump']:
                         current_ts = time.time()
                         pump_duration = 60 if (current_ts - last_emergency_pump_time) < EMERGENCY_COOLDOWN else 15
@@ -255,11 +271,9 @@ def on_message(client, userdata, msg):
                     if state['pump']: control_pump(False, "Flood Safety")
                 else:
                     state['warning'] = ""
-                    # Logic cắt bơm thông thường khi đạt target AI
                     if state['mode'] == 'AUTO' and state['pump'] and state['soil'] >= state['ai_target']:
                         control_pump(False, f"Target {state['ai_target']}% OK")
                     
-                    # Trigger định kỳ
                     if state['mode'] == 'AUTO':
                         threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
                 
@@ -276,23 +290,23 @@ def on_message(client, userdata, msg):
                 state['region'] = data['region']; state['step'] = 1; broadcast()
             
             elif evt == 'enter_mode':
-                # 🔥 QUAN TRỌNG: Tắt bơm ngay lập tức khi đổi chế độ
+                # 🔥 TẮT BƠM TRƯỚC
                 control_pump(False, "Mode Switch")
                 
                 state['mode'] = data['mode']; state['step'] = 2
                 
                 if state['mode'] == 'AUTO':
-                    state['ai_initialized'] = False # Reset cờ: Bắt buộc chờ AI
+                    state['ai_initialized'] = False # Reset cờ
                     state['ai_reason'] = "Đang kết nối vệ tinh AI..."
                     state['ai_timing'] = "Vui lòng đợi..."
-                    # Gọi AI ngay lập tức
+                    # Gọi AI ngay
                     threading.Thread(target=ask_gemini, kwargs={'force': True}, daemon=True).start()
                 
                 log_event("MODE_CHANGE", f"Vào {state['mode']}")
                 broadcast()
                 
             elif evt == 'exit_dashboard':
-                # 🔥 QUAN TRỌNG: Thoát ra là tắt bơm
+                # 🔥 THOÁT LÀ TẮT
                 control_pump(False, "User Exit")
                 state['step'] = 0; state['mode'] = 'NONE'
                 broadcast()
