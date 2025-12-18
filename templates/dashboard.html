@@ -272,7 +272,7 @@
     const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
     const PREFIX = "thaocute_smartgarden/";
     const rawRole = "{{ role }}"; 
-    const ROLE = (rawRole.includes("{{") || !rawRole) ? "VIEWER" : rawRole;
+    const ROLE = (rawRole.includes("{" + "{") || !rawRole) ? "VIEWER" : rawRole;
     const client = mqtt.connect(BROKER, { keepalive: 60, clientId: 'web_' + Math.random().toString(16).substr(2, 8) });
 
     const CITIES = { 'NORTH': ["Hà Nội", "Hải Phòng", "Quảng Ninh"], 'CENTRAL': ["Đà Nẵng", "Huế"], 'SOUTH': ["TP.HCM", "Cần Thơ"] };
@@ -495,3 +495,4 @@
 </script>
 </body>
 </html>
+
