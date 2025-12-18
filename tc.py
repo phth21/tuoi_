@@ -13,7 +13,7 @@ from google.genai import types
 app = Flask(__name__)
 app.secret_key = 'thao_cute_sieu_cap_vipro'
 
-# 🔒 [QUAN TRỌNG] KHÓA LUỒNG: Ngăn chặn việc gọi AI chồng chéo
+# 🔒 [QUAN TRỌNG] KHÓA LUỒNG
 ai_lock = threading.Lock()
 
 # TÀI KHOẢN
@@ -42,9 +42,9 @@ try:
         print("⚠️ Cảnh báo: Chưa có MONGO_URI")
 except Exception as e: print(f"❌ Lỗi MongoDB: {e}")
 
-# ====================== KHỞI TẠO AI (CỐ ĐỊNH 1.5 FLASH) ======================
+# ====================== KHỞI TẠO AI (SỬA LỖI 404) ======================
 ai_client = None
-CURRENT_MODEL = "gemini-1.5-flash" # Chốt model ổn định, không dò tìm lung tung nữa
+CURRENT_MODEL = "gemini-2.0-flash-exp" # Giữ nguyên model mới nhất để không bị lỗi
 
 if GEMINI_KEY:
     try:
@@ -55,7 +55,7 @@ if GEMINI_KEY:
 
 # ====================== BIẾN TOÀN CỤC ======================
 FLOOD_LEVEL = 90
-EMERGENCY_LEVEL = 25 
+EMERGENCY_LEVEL = 25  # Mức báo động khô
 
 REGIONAL_DB = {
     'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68), "Lào Cai":(22.48,103.97)},
@@ -127,36 +127,28 @@ def update_weather():
             state['rain'] = r.get('rain', {}).get('1h', 0.0)
             if "Thủ công" not in state['location']: state['location'] = r.get('name') + " (VN)"
             if state['mode'] == 'AUTO': 
-                # Gọi hàm hỏi AI (đã có cơ chế lock bảo vệ)
                 threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
     except: pass
     broadcast()
 
-# --- 🔥 HÀM HỎI AI (ĐÃ NÂNG CẤP LOGIC CHỐNG SPAM) ---
+# --- 🔥 HÀM HỎI AI (GIỮ NGUYÊN) ---
 def ask_gemini(force=False):
-    # 1. Kiểm tra nhanh: Nếu đang có luồng khác xử lý thì bỏ qua ngay
-    if ai_lock.locked():
-        return 
+    if ai_lock.locked(): return 
     
-    # 2. Vào vùng an toàn (Chỉ 1 luồng được chạy tại 1 thời điểm)
     with ai_lock:
         if state['mode'] != 'AUTO': return
         if not ai_client: return
 
-        # Logic Cooldown (Tính toán thời gian nghỉ)
+        # Logic Cooldown
         now = time.time()
         elapsed = now - state['last_ai_call']
         is_emergency = state['soil'] < EMERGENCY_LEVEL
-        cooldown_time = 30 if is_emergency else 120 # 30s khẩn cấp, 120s bình thường
+        cooldown_time = 30 if is_emergency else 120 
 
-        # Nếu không ép buộc (force) và chưa hết giờ nghỉ -> Bỏ qua
-        if not force and elapsed < cooldown_time:
-            # print(f"⏳ Chờ cooldown... ({int(cooldown_time - elapsed)}s)")
-            return
+        if not force and elapsed < cooldown_time: return
 
         print(f"\n--- 🤖 AI CHECK ({CURRENT_MODEL}) | Soil={state['soil']}% ---")
 
-        # Prompt tối ưu (Ngắn gọn để tiết kiệm token & chạy nhanh)
         urgent_note = "KHẨN CẤP: Đất quá khô!" if is_emergency else ""
         prompt = f"""
         Role: Hệ thống tưới cây.
@@ -166,7 +158,6 @@ def ask_gemini(force=False):
         """
 
         try:
-            # Gọi Google Gemini
             response = ai_client.models.generate_content(
                 model=CURRENT_MODEL,
                 contents=prompt,
@@ -176,7 +167,6 @@ def ask_gemini(force=False):
                 )
             )
 
-            # Xử lý kết quả
             if response and response.text:
                 data = json.loads(response.text)
 
@@ -186,11 +176,9 @@ def ask_gemini(force=False):
                 reason = data.get("reason", "...")
 
                 state['ai_target'] = target; state['ai_timing'] = timing; state['ai_reason'] = reason
-                state['last_ai_call'] = time.time() # Cập nhật thời gian gọi thành công
+                state['last_ai_call'] = time.time()
 
                 print(f"🎯 AI → {action} | Lý do: {reason}")
-                
-                # Ghi log đặc biệt để theo dõi
                 log_event("AI_DECISION", f"{action} - {reason}")
 
                 if action == "TƯỚI": control_pump(True, "AI Decision")
@@ -199,13 +187,12 @@ def ask_gemini(force=False):
                 broadcast()
 
         except Exception as e:
-            print(f"❌ AI ERROR: {e}")
+            print(f"❌ AI FATAL ERROR: {e}")
 
 # ====================== ĐIỀU KHIỂN BƠM ======================
 def control_pump(on, source="System"):
-    # Safety Check (Ngập úng)
     if on and state['soil'] >= FLOOD_LEVEL:
-        on = False; state['warning'] = "NGẬP ÚNG! TỪ CHỐI BƠM"
+        on = False; state['warning'] = "⛔ NGUY HIỂM: NGẬP ÚNG!"
     if state['step'] != 2 and on: on = False 
     
     if state['pump'] != on:
@@ -215,10 +202,10 @@ def control_pump(on, source="System"):
         log_event(f"PUMP_{cmd}", source)
         print(f"💦 PUMP {cmd} ({source})")
     
-    if not on and state['warning'] == "NGẬP ÚNG! TỪ CHỐI BƠM": state['warning'] = ""
+    if not on and "NGẬP" in state['warning']: state['warning'] = ""
     broadcast()
 
-# ====================== MQTT HANDLE ======================
+# ====================== MQTT HANDLE (CHỈNH SỬA Ở ĐÂY) ======================
 def on_message(client, userdata, msg):
     try:
         payload = msg.payload.decode()
@@ -229,17 +216,23 @@ def on_message(client, userdata, msg):
                 val = int(payload.split("H:")[1].split()[0])
                 state['soil'] = max(0, min(100, val))
                 
-                # A. AN TOÀN (Ngập là cắt ngay lập tức)
+                # --- 🔥 [ĐOẠN MỚI THÊM VÀO] XỬ LÝ CẢNH BÁO 🔥 ---
+                if state['soil'] < EMERGENCY_LEVEL:
+                    state['warning'] = "🔥 KHẨN CẤP: ĐẤT QUÁ KHÔ! CẦN TƯỚI NGAY!"
+                elif state['soil'] >= FLOOD_LEVEL:
+                    state['warning'] = "⛔ NGUY HIỂM: NGẬP ÚNG!"
+                else:
+                    state['warning'] = "" # Ẩn đi nếu bình thường
+                # -----------------------------------------------
+
+                # A. AN TOÀN (Ngập là cắt)
                 if state['soil'] >= FLOOD_LEVEL and state['pump']:
                     control_pump(False, "Safety Cutoff")
                 
                 # B. LOGIC AUTO
                 elif state['mode'] == 'AUTO':
-                    # Tự ngắt khi đạt target AI đề ra
                     if state['pump'] and state['soil'] >= state['ai_target']:
                         control_pump(False, f"Đạt mục tiêu {state['ai_target']}%")
-                    
-                    # Gọi AI (An toàn qua Thread Lock)
                     threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
                 
                 broadcast() 
@@ -255,7 +248,6 @@ def on_message(client, userdata, msg):
                 state['mode'] = data['mode']; state['step'] = 2
                 log_event("MODE_CHANGE", f"Chuyển chế độ {state['mode']}")
                 if state['mode'] == 'AUTO': 
-                    # Chuyển mode thì cho phép Force gọi ngay
                     threading.Thread(target=ask_gemini, kwargs={'force': True}, daemon=True).start()
                 broadcast()
             elif evt == 'exit_dashboard':
