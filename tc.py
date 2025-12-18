@@ -41,10 +41,10 @@ last_emergency_pump_time = 0
 
 # CONFIG MODEL AI
 AI_MODELS_PRIORITY = [
-    "gemini-1.5-flash-latest",      
-    "gemini-1.5-flash-002",          
-    "gemini-1.5-pro-latest",               
-    "gemini-2.0-flash-exp"             
+    "gemini-2.5-flash",            # Stable, rất nhanh & rẻ - lựa chọn lý tưởng thứ 2
+    "gemini-2.5-flash-lite",       # Siêu rẻ & nhanh cho high-frequency (nếu bạn gọi AI thường xuyên)
+    "gemini-2.5-pro",              # Dự phòng mạnh hơn nếu cần reasoning phức tạp hơn
+    "gemini-2.0-flash"             # Stable cũ nhưng vẫn chạy tốt làm fallback cuối
 ]
 
 REGIONAL_DB = {
@@ -167,15 +167,19 @@ def ask_gemini(force=False):
             cooldown_time = 30 if is_emergency else 120
             if not force and elapsed < cooldown_time: return
 
+        # --- ĐÃ SỬA: Dùng {{ và }} cho JSON ---
         prompt = f"""
         Role: Hệ thống tưới cây IoT.
         Input: Đất {state['soil']}%, Nhiệt {state['temp']}C, Mưa {state['rain']}mm.
         Trạng thái khẩn cấp: {"CÓ" if state['soil'] < EMERGENCY_LEVEL else "KHÔNG"}.        
         Output JSON Only:
-        {{   "action": "TƯỚI" hoặc "KHÔNG",
+        {{   
+            "action": "TƯỚI" hoặc "KHÔNG",
             "target": "Xem xét để phù hợp với thời tiết lượng mưa và đưa ra độ ẩm cần tưới phù hợp (ví dụ 70%, 75% )",
             "timing": "Mô tả bao giờ tưới(ngay bây giờ nếu đất quá khô và bị cảnh báo; hoặc 2 tiếng nữa, 5 tiếng nữa,...)",
-            "reason": "Lý do ngắn gọn dựa vào thời tiết, lượng mưa, miền, mùa,... để giải thích tại sao chọn độ ẩm và thời gian đấy"         }"""
+            "reason": "Lý do ngắn gọn dựa vào thời tiết, lượng mưa, miền, mùa,... để giải thích tại sao chọn độ ẩm và thời gian đấy"         
+        }}""" 
+        # --- Lưu ý: Dòng trên phải là }}""" (2 dấu ngoặc) ---
         
         success = False
         for model_name in AI_MODELS_PRIORITY:
@@ -365,3 +369,4 @@ except: pass
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
