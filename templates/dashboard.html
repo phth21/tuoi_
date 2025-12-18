@@ -308,9 +308,9 @@
 
     // 2. MQTT
     client.on('connect', () => { 
-        client.subscribe(PREFIX + 'update'); 
-        client.publish(PREFIX + 'events', JSON.stringify({event: 'get_status'}));
-    });
+    client.subscribe(PREFIX + 'update'); 
+    client.publish(PREFIX + 'events', JSON.stringify({event: 'exit_dashboard'}));
+});
 
     client.on('message', (t, m) => {
         try { updateUI(JSON.parse(m.toString())); } catch (e) { console.error(e); }
@@ -474,34 +474,56 @@
 
     function renderHistoryTable() {
         const tbody = document.getElementById('histBody');
+        const filterVal = document.getElementById('filterType').value;
         tbody.innerHTML = "";
+        
         if (rawHistoryData.length === 0) {
             tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:#999'>Không có dữ liệu</td></tr>";
             document.getElementById('pumpCountText').innerText = "0";
             return;
         }
 
-        document.getElementById('pumpCountText').innerText = rawHistoryData.filter(i => i.action.includes('ON') || i.action.includes('BẬT')).length;
+        // --- ĐOẠN NÀY LÀ LOGIC ĐẾM "1 LẦN BƠM" ---
+        // Chỉ đếm các dòng là BẬT hoặc ON
+        let totalPumps = 0;
+        rawHistoryData.forEach(item => {
+            const act = item.action.toUpperCase();
+            // Nếu dòng này là lệnh BẬT thì tính là 1 lần bơm
+            if (act.includes('ON') || act.includes('BẬT')) {
+                totalPumps++;
+            }
+        });
+        document.getElementById('pumpCountText').innerText = totalPumps;
+        // ------------------------------------------
 
+        // Phần hiển thị bảng bên dưới
         rawHistoryData.forEach(i => {
-            let color = '#444'; let icon = '';
-            if (i.action.includes('ON') || i.action.includes('BẬT')) { color = '#2e7d32'; icon='💧'; }
-            else if (i.action.includes('OFF') || i.action.includes('TẮT')) { color = '#c62828'; icon='⛔'; }
-            else if (i.action.includes('AI') || i.action.includes('AUTO')) { color = '#673ab7'; icon='🤖'; }
+            let show = true;
+            // Bộ lọc hiển thị (không ảnh hưởng đến số đếm tổng ở trên)
+            if (filterVal === 'ON' && !(i.action.includes('ON') || i.action.includes('BẬT'))) show = false;
+            if (filterVal === 'OFF' && !(i.action.includes('OFF') || i.action.includes('TẮT'))) show = false;
+            if (filterVal === 'AUTO' && !(i.action.includes('AI') || i.action.includes('AUTO'))) show = false;
 
-            // Hiển thị thêm cột độ ẩm (nếu có trong data, nếu ko để --)
-            const soilVal = i.soil !== undefined ? i.soil + "%" : "--";
+            if (show) {
+                let color = '#444'; let icon = '';
+                if (i.action.includes('ON') || i.action.includes('BẬT')) { color = '#2e7d32'; icon='💧'; }
+                else if (i.action.includes('OFF') || i.action.includes('TẮT')) { color = '#c62828'; icon='⛔'; }
+                else if (i.action.includes('AI') || i.action.includes('AUTO')) { color = '#673ab7'; icon='🤖'; }
 
-            tbody.innerHTML += `<tr>
-                <td style="color:#777; font-size:12px">${i.time}</td>
-                <td style="font-weight:bold; color:#1b5e20">${soilVal}</td>
-                <td style="color:${color}; font-weight:700">${icon} ${i.action}</td>
-                <td>${i.detail}</td>
-            </tr>`;
+                const soilVal = i.soil !== undefined ? i.soil + "%" : "--";
+
+                tbody.innerHTML += `<tr>
+                    <td style="color:#777; font-size:12px">${i.time}</td>
+                    <td style="font-weight:bold; color:#1b5e20">${soilVal}</td>
+                    <td style="color:${color}; font-weight:700">${icon} ${i.action}</td>
+                    <td>${i.detail}</td>
+                </tr>`;
+            }
         });
     }
 </script>
 </body>
 </html>
+
 
 
