@@ -1,6 +1,6 @@
 import threading, time, json, re, os
 import paho.mqtt.client as mqtt
-import requests # Dùng cái này để gọi AI trực tiếp, không qua SDK nữa
+import requests 
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect
 from pymongo import MongoClient
@@ -15,11 +15,10 @@ ai_lock = threading.Lock()
 # TÀI KHOẢN
 USERS = {
     'admin': {'pass': 'admin123', 'role': 'ADMIN'},
-    'khach': {'pass': '1111',      'role': 'VIEWER'}
+    'khach': {'pass': '1111',       'role': 'VIEWER'}
 }
 
 # CONFIG BACKEND
-# Lưu ý: GEMINI_KEY phải còn hoạt động
 GEMINI_KEY = os.getenv("GEMINI_KEY")
 OPENWEATHER_KEY = os.getenv("OWM_KEY", "5803b3e6056e6886cfa874414788f232")
 MONGO_URI = os.getenv("MONGO_URI")
@@ -40,8 +39,14 @@ EMERGENCY_LEVEL = 25
 EMERGENCY_COOLDOWN = 300
 last_emergency_pump_time = 0 
 
-# Danh sách Model để thử lần lượt (Fallback)
-AI_MODELS_PRIORITY = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+# --- 🔥 SỬA PHẦN NÀY: DANH SÁCH MODEL CHUẨN ---
+# Cập nhật tên model mới nhất để tránh lỗi 404
+AI_MODELS_PRIORITY = [
+    "gemini-1.5-flash-latest", # Bản Flash ổn định nhất
+    "gemini-1.5-flash",        # Alias mặc định
+    "gemini-1.5-pro-latest",   # Bản Pro (thông minh hơn)
+    "gemini-1.5-flash-8b"      # Bản siêu nhẹ (dự phòng cuối)
+]
 
 REGIONAL_DB = {
     'NORTH': {"Hà Nội":(21.02,105.85), "Hải Phòng":(20.86,106.68), "Lào Cai":(22.48,103.97)},
@@ -59,7 +64,7 @@ state = {
     'lat': None, 'lon': None, 'soil': 0, 'temp': 25.0, 'humidity': 80, 'rain': 0.0,
     'ai_timing': "...", 'ai_target': "...", 'ai_reason': "...", 
     'pump': False, 'warning': "", 'last_ai_call': 0,
-    'ai_initialized': False # Cờ: Chờ AI dự đoán lần đầu
+    'ai_initialized': False 
 }
 
 mqtt_client = mqtt.Client(client_id=f"Render_Server_{int(time.time())}")
@@ -114,17 +119,16 @@ def update_weather():
             state['rain'] = r.get('rain', {}).get('1h', 0.0)
             if "Thủ công" not in state['location']: state['location'] = r.get('name') + " (VN)"
             
-            # Chỉ gọi AI định kỳ nếu đã Initialize xong
             if state['mode'] == 'AUTO' and state['ai_initialized']: 
                 threading.Thread(target=ask_gemini, kwargs={'force': False}, daemon=True).start()
     except: pass
     broadcast()
 
-# --- 🔥 HÀM GỌI AI TRỰC TIẾP (KHÔNG DÙNG SDK) ---
+# --- 🔥 HÀM GỌI AI TRỰC TIẾP (ĐÃ TỐI ƯU) ---
 def call_gemini_api_direct(model_name, prompt_text):
     if not GEMINI_KEY: return None
     
-    # URL API chuẩn của Google
+    # URL API chuẩn
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_KEY}"
     
     headers = {'Content-Type': 'application/json'}
@@ -133,27 +137,34 @@ def call_gemini_api_direct(model_name, prompt_text):
             "parts": [{"text": prompt_text}]
         }],
         "generationConfig": {
-            "response_mime_type": "application/json",
+            "response_mime_type": "application/json", # Bắt buộc trả về JSON
             "temperature": 0.4
         }
     }
     
     try:
-        # Gửi request POST trực tiếp
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response = requests.post(url, headers=headers, json=payload, timeout=15) # Tăng timeout lên 15s
         
-        # Nếu lỗi 429 (Hết quota) hoặc 404/500
         if response.status_code != 200:
             print(f"⚠️ API Error ({model_name}): {response.status_code} - {response.text}")
-            return None # Trả về None để thử model khác
+            return None 
 
         result = response.json()
-        # Lấy text từ JSON trả về
-        text_content = result['candidates'][0]['content']['parts'][0]['text']
-        return json.loads(text_content)
+        raw_text = result['candidates'][0]['content']['parts'][0]['text']
+        
+        # --- LÀM SẠCH JSON --- (Quan trọng)
+        # Loại bỏ các ký tự markdown như ```json ... ``` nếu có
+        clean_text = re.sub(r"```json|```", "", raw_text).strip()
+        # Dùng regex để trích xuất đúng phần JSON {}
+        match = re.search(r'\{.*\}', clean_text, re.DOTALL)
+        
+        if match:
+            return json.loads(match.group())
+        else:
+            return json.loads(clean_text) # Thử parse trực tiếp nếu regex không bắt được
         
     except Exception as e:
-        print(f"❌ Connection Error ({model_name}): {e}")
+        print(f"❌ Gemini Exception ({model_name}): {e}")
         return None
 
 def ask_gemini(force=False):
@@ -163,7 +174,6 @@ def ask_gemini(force=False):
         if state['mode'] != 'AUTO': return
         if not GEMINI_KEY: return
 
-        # Kiểm tra thời gian nếu không phải ép buộc
         if state['ai_initialized']:
             now = time.time()
             elapsed = now - state['last_ai_call']
@@ -177,14 +187,16 @@ def ask_gemini(force=False):
         Trạng thái khẩn cấp: {"CÓ" if state['soil'] < EMERGENCY_LEVEL else "KHÔNG"}.
         
         Output JSON Only:
-        1. "action": "TƯỚI" hoặc "KHÔNG".
-        2. "target": (int) Độ ẩm mục tiêu để dừng bơm (VD: 75).
-        3. "timing": (string) Bao giờ tưới tiếp (VD: "1 giờ nữa", "KHẨN CẤP").
-        4. "reason": (string) Lý do ngắn gọn.
+        {{
+            "action": "TƯỚI" hoặc "KHÔNG",
+            "target": 75,
+            "timing": "Mô tả bao giờ tưới",
+            "reason": "Lý do ngắn gọn dưới 10 từ"
+        }}
         """
 
         success = False
-        # Vòng lặp thử từng model (Fallback)
+        # Thử lần lượt từng model trong danh sách ưu tiên
         for model_name in AI_MODELS_PRIORITY:
             if success: break
             
@@ -192,28 +204,31 @@ def ask_gemini(force=False):
             data = call_gemini_api_direct(model_name, prompt)
             
             if data:
-                # Nếu có dữ liệu trả về hợp lệ
                 action = data.get("action", "KHÔNG").upper()
-                target = int(data.get("target", 75))
-                timing = data.get("timing", "...")
-                reason = data.get("reason", "...")
+                # Xử lý target an toàn (ép kiểu int)
+                try:
+                    target_raw = data.get("target", 75)
+                    target = int(re.search(r'\d+', str(target_raw)).group())
+                except:
+                    target = 75
 
-                state['ai_target'] = target; state['ai_timing'] = timing; state['ai_reason'] = reason
+                state['ai_target'] = target
+                state['ai_timing'] = data.get("timing", "...")
+                state['ai_reason'] = data.get("reason", "...")
                 state['last_ai_call'] = time.time()
                 
-                # 🔥 Đánh dấu: AI đã hoạt động -> Cho phép hệ thống chạy
                 state['ai_initialized'] = True 
 
-                print(f"🎯 AI Success ({model_name}): {action} | {reason}")
-                log_event(f"AI_{model_name}", f"{action} - {reason}")
+                print(f"🎯 AI Success ({model_name}): {action} | {state['ai_reason']}")
+                log_event(f"AI_{model_name}", f"{action} - {state['ai_reason']}")
                 
                 if action == "TƯỚI": control_pump(True, "AI Start")
                 else: control_pump(False, "AI Stop")
                 
                 broadcast()
-                success = True # Thoát vòng lặp
+                success = True
             else:
-                print(f"⚠️ Model {model_name} thất bại. Thử cái tiếp theo...")
+                print(f"⚠️ Model {model_name} thất bại. Đang thử model khác...")
 
 # ====================== ĐIỀU KHIỂN BƠM ======================
 def control_pump(on, source="System"):
@@ -252,7 +267,6 @@ def on_message(client, userdata, msg):
 
                 # --- LOGIC MỚI: AUTO CHỜ AI ---
                 if state['mode'] == 'AUTO' and not state['ai_initialized']:
-                    # Im lặng chờ AI
                     broadcast()
                     return 
 
@@ -290,23 +304,20 @@ def on_message(client, userdata, msg):
                 state['region'] = data['region']; state['step'] = 1; broadcast()
             
             elif evt == 'enter_mode':
-                # 🔥 TẮT BƠM TRƯỚC
                 control_pump(False, "Mode Switch")
                 
                 state['mode'] = data['mode']; state['step'] = 2
                 
                 if state['mode'] == 'AUTO':
-                    state['ai_initialized'] = False # Reset cờ
+                    state['ai_initialized'] = False 
                     state['ai_reason'] = "Đang kết nối vệ tinh AI..."
                     state['ai_timing'] = "Vui lòng đợi..."
-                    # Gọi AI ngay
                     threading.Thread(target=ask_gemini, kwargs={'force': True}, daemon=True).start()
                 
                 log_event("MODE_CHANGE", f"Vào {state['mode']}")
                 broadcast()
                 
             elif evt == 'exit_dashboard':
-                # 🔥 THOÁT LÀ TẮT
                 control_pump(False, "User Exit")
                 state['step'] = 0; state['mode'] = 'NONE'
                 broadcast()
